@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { localSpeciesName } from '../../lib/i18n/dataLocal'
   import Glyph from '../../lib/glyphs/Glyph.svelte'
   import { showToast } from '../../lib/stores/toast'
 
@@ -9,8 +10,13 @@
     type CosechaRow
   } from '../../lib/db/cosecha'
   import { dbReady, species, planted, getLand } from '../../lib/stores/appState'
+  import { dialogConfirm } from '../../lib/stores/dialog'
   import { nowIso } from '../../lib/utils/id'
   import { authUser } from '../../lib/api'
+  import { t } from '../../lib/i18n/index.svelte'
+  import { untrack } from 'svelte'
+  import { formatDate } from '../../lib/utils/dates'
+  import { captureCurrentPosition as geolocate } from '../../lib/utils/geolocate'
 
   let { landId = 'land-default' }: { landId?: string } = $props()
 
@@ -26,23 +32,25 @@
   let newLat = $state<number | null>(null)
   let newLng = $state<number | null>(null)
 
-  authUser.subscribe((u) => { if (u && !newAuthor) newAuthor = u.username })
+  $effect(() => {
+    const u = $authUser
+    untrack(() => { if (u && !newAuthor) newAuthor = u.username })
+  })
 
   async function captureCosechaLoc(): Promise<void> {
     newCaptureLoc = !newCaptureLoc
     if (!newCaptureLoc) { newLat = null; newLng = null; return }
-    if (!('geolocation' in navigator)) { showToast({ message: 'Geolocalización no disponible.', tone: 'warn' }); newCaptureLoc = false; return }
-    try {
-      const pos: GeolocationPosition = await new Promise((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, maximumAge: 60000 }))
-      newLat = pos.coords.latitude
-      newLng = pos.coords.longitude
-    } catch { showToast({ message: 'No pude obtener la ubicación.', tone: 'warn' }); newCaptureLoc = false }
+    const r = await geolocate()
+    if (!r.ok) {
+      showToast({ message: t(r.reason === 'unsupported' ? 'nb_geo_unavailable' : 'nb_geo_failed'), tone: 'warn' })
+      newCaptureLoc = false
+      return
+    }
+    newLat = r.lat
+    newLng = r.lng
   }
 
-  dbReady.subscribe((ready) => {
-    if (ready) refresh()
-  })
+  $effect(() => { if ($dbReady) untrack(refresh) })
 
   function refresh() {
     try {
@@ -67,7 +75,7 @@
   function saveHarvest() {
     const amt = parseFloat(newAmount)
     if (isNaN(amt) || amt <= 0) {
-      showToast({ message: 'Ingresa una cantidad válida.', tone: 'warn' })
+      showToast({ message: t('harvest_err_qty'), tone: 'warn' })
       return
     }
     addCosecha({
@@ -89,32 +97,38 @@
     newLat = null
     newLng = null
     refresh()
-    showToast({ message: 'Cosecha registrada.', tone: 'ok' })
+    showToast({ message: t('harvest_saved'), tone: 'ok' })
   }
 
-  function delHarvest(id: string) {
+  async function delHarvest(id: string): Promise<void> {
+    const ok = await dialogConfirm({
+      title: t('harvest_delete_q'),
+      body: t('harvest_delete_body'),
+      confirmLabel: t('common_delete'),
+      danger: true
+    })
+    if (!ok) return
     deleteCosecha(id)
     refresh()
-    showToast({ message: 'Registro borrado.', tone: 'ok' })
+    showToast({ message: t('harvest_deleted'), tone: 'ok' })
   }
 
   function getPlantedName(pid: string | null) {
-    if (!pid) return 'Desconocido'
+    if (!pid) return t('harvest_unknown')
     const p = $planted.find((x) => x.id === pid)
-    if (!p) return 'Planta eliminada'
+    if (!p) return t('harvest_plant_deleted')
     const sp = $species.find((x) => x.id === p.species_id)
-    return sp ? sp.common_name : 'Desconocida'
+    return sp ? localSpeciesName(sp.common_name, sp.scientific_name) : t('harvest_unknown_f')
   }
 </script>
 
 <section class="card-warm card">
-  <div class="label">Cosecha y Producción</div>
+  <div class="label">{t('harvest_title')}</div>
   <p
     class="sub"
     style="margin-top: 6px;"
   >
-    Lleva un registro de lo que la tierra te entrega. Mide el rendimiento de tus
-    zonas y especies.
+    {t('harvest_sub')}
   </p>
   <div
     class="row wrap"
@@ -128,7 +142,7 @@
         <Glyph
           name="Plus"
           size={14}
-        /> Registrar Cosecha
+        /> {t('harvest_new')}
       </button>
     {/if}
   </div>
@@ -139,16 +153,16 @@
       aria-hidden="true"
     ></div>
     <div class="field-row">
-      <label for="cos-plant">Planta cultivada (Opcional)</label>
+      <label for="cos-plant">{t('harvest_plant_label')}</label>
       <select
         id="cos-plant"
         class="inp"
         bind:value={selectedPlanted}
       >
-        <option value="">Selecciona una planta...</option>
+        <option value="">{t('harvest_plant_placeholder')}</option>
         {#each $planted as p}
           {@const sp = $species.find((x) => x.id === p.species_id)}
-          <option value={p.id}>{sp ? sp.common_name : 'Desconocida'}</option>
+          <option value={p.id}>{sp ? localSpeciesName(sp.common_name, sp.scientific_name) : t('harvest_unknown_f')}</option>
         {/each}
       </select>
     </div>
@@ -160,13 +174,13 @@
         class="field-row"
         style="flex: 1;"
       >
-        <label for="cos-amount">Cantidad (kg)</label>
+        <label for="cos-amount">{t('harvest_amount_label')}</label>
         <input
           id="cos-amount"
           class="inp"
           type="number"
           step="0.1"
-          placeholder="ej. 12"
+          placeholder={t('harvest_amount_placeholder')}
           bind:value={newAmount}
         />
       </div>
@@ -174,21 +188,21 @@
         class="field-row"
         style="flex: 1;"
       >
-        <label for="cos-quality">Calidad</label>
+        <label for="cos-quality">{t('harvest_quality')}</label>
         <select
           id="cos-quality"
           class="inp"
           bind:value={newQuality}
         >
-          <option value="Excelente">Excelente</option>
-          <option value="Buena">Buena</option>
-          <option value="Regular">Regular</option>
-          <option value="Mala">Mala</option>
+          <option value="Excelente">{t('harvest_q_excellent')}</option>
+          <option value="Buena">{t('harvest_q_good')}</option>
+          <option value="Regular">{t('harvest_q_fair')}</option>
+          <option value="Mala">{t('harvest_q_poor')}</option>
         </select>
       </div>
     </div>
     <div class="field-row">
-      <label for="cos-date">Fecha</label>
+      <label for="cos-date">{t('harvest_date')}</label>
       <input
         id="cos-date"
         class="inp"
@@ -197,22 +211,22 @@
       />
     </div>
     <div class="field-row">
-      <label for="cos-notes">Notas (Opcional)</label>
+      <label for="cos-notes">{t('harvest_notes')}</label>
       <input
         id="cos-notes"
         class="inp"
-        placeholder="ej. Lluvia el día anterior..."
+        placeholder={t('harvest_notes_placeholder')}
         bind:value={newNotes}
       />
     </div>
     <div class="field-row">
-      <label for="cos-author">Autor</label>
-      <input id="cos-author" class="inp" placeholder="Tu nombre" bind:value={newAuthor} />
+      <label for="cos-author">{t('nb_author_label')}</label>
+      <input id="cos-author" class="inp" placeholder={t('nb_author_placeholder')} bind:value={newAuthor} />
     </div>
     <div class="row" style="margin-top: 8px;">
       <button type="button" class="btn btn-sm" aria-pressed={newCaptureLoc} onclick={captureCosechaLoc}>
         <Glyph name="Map" size={12} />
-        {newLat != null ? `${newLat.toFixed(3)}, ${newLng?.toFixed(3)}` : 'Adjuntar ubicación'}
+        {newLat != null ? `${newLat.toFixed(3)}, ${newLng?.toFixed(3)}` : t('nb_attach_location')}
       </button>
     </div>
     <div
@@ -221,11 +235,11 @@
     >
       <button
         class="btn btn-primary"
-        onclick={saveHarvest}>Guardar</button
+        onclick={saveHarvest}>{t('common_save')}</button
       >
       <button
         class="btn"
-        onclick={() => (creating = false)}>Cancelar</button
+        onclick={() => (creating = false)}>{t('common_cancel')}</button
       >
     </div>
   {/if}
@@ -242,10 +256,10 @@
   style="margin-bottom: 12px; display: flex; gap: 16px; align-items: center;"
 >
   <div style="flex: 1;">
-    <div class="label">Este mes</div>
-    <div style="font-family: var(--serif); font-size: 28px; margin-top: 4px;">
+    <div class="label">{t('harvest_this_month')}</div>
+    <div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(28px * var(--text-scale)); margin-top: 4px;">
       {totalThisMonth}
-      <span style="font-size: 16px; color: var(--ink-soft);">kg</span>
+      <span style="font-size: calc(16px * var(--text-scale)); color: var(--ink-soft);">kg</span>
     </div>
   </div>
   <Glyph
@@ -265,15 +279,13 @@
         style="justify-content: space-between;"
       >
         <span class="chip chip-jade">{getPlantedName(h.planted_id)}</span>
-        <span class="coord"
-          >{new Date(h.harvest_date).toLocaleDateString('es-CO')}</span
-        >
+        <span class="coord">{formatDate(h.harvest_date)}</span>
       </div>
       <div
         class="row"
         style="justify-content: space-between; align-items: baseline; margin-top: 4px;"
       >
-        <div style="font-family: var(--serif); font-size: 20px;">
+        <div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(20px * var(--text-scale));">
           {h.amount_kg} kg
         </div>
         {#if h.notes}
@@ -303,10 +315,11 @@
         class="row"
         style="margin-top: 4px; justify-content: space-between;"
       >
-        <span class="coord">Calidad: {h.quality}</span>
+        <span class="coord">{t('harvest_quality_prefix')} {h.quality}</span>
         <button
           class="btn btn-ghost"
           style="padding: 2px;"
+          aria-label={t('harvest_delete_aria', { name: getPlantedName(h.planted_id) })}
           onclick={() => delHarvest(h.id)}
           ><Glyph
             name="Trash"
@@ -316,6 +329,6 @@
       </div>
     </article>
   {:else}
-    <div class="empty">Aún no hay registros de cosecha.</div>
+    <div class="empty">{t('harvest_empty')}</div>
   {/each}
 </div>

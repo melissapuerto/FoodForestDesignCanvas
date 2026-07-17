@@ -1,6 +1,8 @@
 // Food-forest 7 strata + permaculture zones 1–5.
 // Inputs come from the wizard; outputs are a structured plan the canvas + Settings can render.
 
+import { tr, type TranslationKey } from '../i18n/translate';
+
 export type ClimateProfile =
   | 'tropical-humedo'
   | 'tropical-seco'
@@ -37,10 +39,14 @@ export type WizardInputs = {
   climate: ClimateProfile;
   sunExposure: SunExposure;
   waterAccess: WaterAccess;
+  region: string;
+  microclimates: string[];
   soil: string;
   humidity: string;
   altitude: string;
   goals: Goal[];
+  challenges?: string[];
+  budget?: string;
 };
 
 export type StratumId =
@@ -97,20 +103,19 @@ export const AREA_FACTOR: Record<AreaUnit, number> = {
   vara2: 0.6987     // ~0.7 m² (vara castellana)
 };
 
-export const AREA_LABELS: Record<AreaUnit, string> = {
-  m2: 'metros cuadrados (m²)',
-  km2: 'kilómetros cuadrados (km²)',
-  ha: 'hectáreas',
-  acre: 'acres',
-  manzana: 'manzanas (Centroamérica · ~7 000 m²)',
-  fanegada: 'fanegadas (Colombia · ~6 400 m²)',
-  cuadra: 'cuadras (Cono Sur · ~10 000 m²)',
-  tarea: 'tareas (RD · ~628 m²)',
-  cuerda: 'cuerdas (PR · ~3 930 m²)',
-  yard2: 'yardas² (yd²)',
-  ft2: 'pies² (ft²)',
-  vara2: 'varas² (~0.7 m²)'
-};
+export const AREA_UNITS: AreaUnit[] = [
+  'm2', 'km2', 'ha', 'acre', 'manzana', 'fanegada', 'cuadra', 'tarea', 'cuerda', 'yard2', 'ft2', 'vara2'
+];
+
+/** Localized display label for an area unit. */
+export function areaLabel(unit: AreaUnit): string {
+  return tr(`area_${unit}` as TranslationKey);
+}
+
+/** Localized label for a zone's planting density. */
+export function densityLabel(d: 'alta' | 'media' | 'baja'): string {
+  return tr(`density_${d}` as TranslationKey);
+}
 
 export function toM2(value: number, unit: AreaUnit): number {
   return value * AREA_FACTOR[unit];

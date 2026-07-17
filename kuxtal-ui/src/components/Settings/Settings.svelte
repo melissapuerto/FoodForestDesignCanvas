@@ -1,20 +1,27 @@
 <script lang="ts">
-  import { prefs, setPref, type AccessibilityPrefs } from '../../lib/stores/prefs';
-  import { palette, setPalette, type Palette } from '../../lib/stores/palette';
   import { persistenceMode, exec } from '../../lib/db/sqlite';
-  import { dialogConfirm, dialogAlert } from '../../lib/stores/dialog';
+  import { dialogConfirm, dialogAlert, dialogPrompt } from '../../lib/stores/dialog';
   import { showToast } from '../../lib/stores/toast';
   import { installAvailable, isStandalone, triggerInstall } from '../../lib/stores/install';
   import Glyph from '../../lib/glyphs/Glyph.svelte';
   import PlanCard from './PlanCard.svelte';
   import Wizard from '../Layout/Wizard.svelte';
   import MigrationModal from './MigrationModal.svelte';
+  import AccessibilityControls from '../Layout/AccessibilityControls.svelte';
   import { selectAll } from '../../lib/db/sqlite';
   import { loadPlan } from '../../lib/permaculture/realize';
-  import { autoLogPlants } from '../../lib/stores/appState';
+  import { autoLogPlants, planted, zones, persistence, lands, activeLandId, createLand, renameLand, deleteLand, setActiveLand } from '../../lib/stores/appState';
   import type { AreaUnit, ClimateProfile, Goal, SunExposure, WaterAccess } from '../../lib/permaculture/types';
+  import { getLocale, setLocale, t, LOCALE_NAMES } from '../../lib/i18n/index.svelte';
+  import { localLandName } from '../../lib/i18n/dataLocal';
+  import { announce } from '../../lib/stores/announce';
+  import { downloadCsvExport, downloadExport, importAllData, isValidExport } from '../../lib/db/exportData';
+  import { palette, setPalette } from '../../lib/stores/palette';
+  import { structuralConditions, clearConditions, type StructuralCondition } from '../../lib/stores/conditions';
+  import { loadRemindersConfig, saveRemindersConfig, REMINDER_CATEGORIES, anyEnabled, requestNotificationPermission, notificationsGranted, type ReminderCategory, type RemindersConfig } from '../../lib/reminders/reminders';
 
-  let activeSection = $state<'plan' | 'paleta' | 'a11y' | 'datos' | 'acerca'>('plan');
+  let activeSection = $state<'plan' | 'a11y' | 'datos' | 'acerca' | 'ack'>('plan');
+  let importInput: HTMLInputElement | null = $state(null);
   let editing = $state(false);
   let editingInitial = $state<any>(null);
   let showMigrationModal = $state(false);
@@ -83,7 +90,7 @@
     }
 
     editingInitial = {
-      parcelName: inputs?.parcelName ?? structPart.parcelName ?? parcelName,
+      parcelName: localLandName(inputs?.parcelName ?? structPart.parcelName ?? parcelName),
       location: inputs?.location ?? location,
       lat: inputs?.lat != null ? String(inputs.lat) : lat,
       lng: inputs?.lng != null ? String(inputs.lng) : lng,
@@ -107,32 +114,33 @@
   function finishEdit(): void {
     editing = false;
     editingInitial = null;
-    showToast({ message: 'Tu plan se actualizó.', tone: 'ok' });
+    showToast({ message: t('set_plan_updated'), tone: 'ok' });
   }
 
-  type Toggle = { key: keyof AccessibilityPrefs; label: string; description: string };
 
-  const toggles: Toggle[] = [
-    { key: 'largeText', label: 'Texto grande', description: 'Aumenta el tamaño de letra en toda la app.' },
-    { key: 'highContrast', label: 'Alto contraste', description: 'Más contraste para baja visión.' },
-    { key: 'reducedMotion', label: 'Reducir animaciones', description: 'Desactiva transiciones para reducir mareo.' },
-    { key: 'dyslexiaFont', label: 'Fuente para dislexia', description: 'Tipografía con espaciado amplio y caracteres claros.' },
-    { key: 'screenReaderHints', label: 'Pistas para lector de pantalla', description: 'Añade descripciones extra para tecnología asistiva.' },
-    { key: 'showTutorialOnStart', label: 'Mostrar tutorial al abrir', description: 'Muestra el tutorial breve cada vez que abres la app.' }
-  ];
-
-  const palettes: Array<{ v: Palette; l: string; c: string }> = [
-    { v: 'codice', l: 'Códice', c: 'oklch(0.62 0.16 55)' },
-    { v: 'tierra', l: 'Tierra', c: 'oklch(0.58 0.16 45)' },
-    { v: 'cartografico', l: 'Cartográfico', c: 'oklch(0.50 0.16 30)' },
-    { v: 'botanico', l: 'Botánico', c: 'oklch(0.65 0.15 95)' }
+  // External dependencies + project links surfaced on the About / Acknowledgements
+  // tabs (T1.1). Links are language-neutral.
+  const ACK_LINKS = {
+    // TODO(maintainer): set the real public repository URL before evaluation.
+    source: 'https://github.com/melissapuerto',
+    license: 'https://www.gnu.org/licenses/agpl-3.0.html',
+    osm: 'https://www.openstreetmap.org/copyright',
+    openfreemap: 'https://openfreemap.org/',
+    pfaf: 'https://pfaf.org/',
+    maplibre: 'https://maplibre.org/',
+    sqlite: 'https://sqlite.org/wasm/'
+  };
+  // Practitioners who consented to be acknowledged by name. Fill in before the
+  // evaluation (ICK-07: attribution requires explicit consent).
+  const PRACTITIONERS: string[] = [
+    // 'Name (community/region)',
   ];
 
   async function clearAllData(): Promise<void> {
     const ok = await dialogConfirm({
-      title: '¿Borrar todos los datos?',
-      body: 'Esta acción no se puede deshacer. Eliminará plantas, zonas, notas, recursos y reglas que hayas creado.',
-      confirmLabel: 'Sí, borrar todo',
+      title: t('set_clear_q'),
+      body: t('set_clear_body'),
+      confirmLabel: t('set_clear_ok'),
       danger: true
     });
     if (!ok) return;
@@ -145,30 +153,131 @@
       exec('DELETE FROM resource_item');
       exec('DELETE FROM rule WHERE is_user_owned = 1');
       exec('UPDATE land SET boundary_geojson = NULL, boundary_closed = 0');
-      showToast({ message: 'Datos borrados. Recarga la app para empezar de cero.', tone: 'ok' });
+      showToast({ message: t('set_cleared'), tone: 'ok' });
     } catch {
-      showToast({ message: 'No pude borrar los datos.', tone: 'error' });
+      showToast({ message: t('set_clear_err'), tone: 'error' });
+    }
+  }
+
+  // ---- Live data-flow panel (T2.2): real counts of what is stored locally ----
+  let dataPanelCounts = $state({ logs: 0, resources: 0 });
+  function refreshDataCounts(): void {
+    const q = (sql: string) => selectAll<{ n: number }>(sql)[0]?.n ?? 0;
+    dataPanelCounts = {
+      logs: q('SELECT COUNT(*) AS n FROM log_entry'),
+      resources: q('SELECT COUNT(*) AS n FROM resource_item')
+    };
+  }
+  $effect(() => {
+    if (activeSection === 'datos') refreshDataCounts();
+  });
+
+  function condLabel(c: StructuralCondition): string {
+    return c === 'supply-restricted'
+      ? t('cond_supply')
+      : c === 'intermittent-connection'
+        ? t('cond_connection')
+        : t('cond_land');
+  }
+  function onClearConditions(): void {
+    clearConditions();
+    showToast({ message: t('cond_cleared_toast'), tone: 'ok' });
+  }
+
+  // ---- Local reminders (REM-01..03) ----
+  let reminders = $state<RemindersConfig>(loadRemindersConfig());
+  let notifGranted = $state(notificationsGranted());
+  function setReminder(cat: ReminderCategory, patch: Partial<{ enabled: boolean; everyDays: number }>): void {
+    reminders = { ...reminders, [cat]: { ...reminders[cat], ...patch } };
+    saveRemindersConfig(reminders);
+  }
+  async function askNotif(): Promise<void> {
+    const p = await requestNotificationPermission();
+    notifGranted = p === 'granted';
+    showToast({ message: p === 'granted' ? t('rem_notif_on') : t('rem_notif_off'), tone: p === 'granted' ? 'ok' : 'info' });
+  }
+
+  // ---- Multiple canvases / lands (DC-08) ----
+  async function createLandPrompt(): Promise<void> {
+    const name = await dialogPrompt({ title: t('lands_new'), placeholder: t('lands_name_ph'), confirmLabel: t('lands_create'), allowEmpty: false });
+    if (name == null) return;
+    const id = createLand(name);
+    setActiveLand(id);
+    showToast({ message: t('lands_created'), tone: 'ok' });
+  }
+  async function renameLandPrompt(id: string, current: string): Promise<void> {
+    const name = await dialogPrompt({ title: t('lands_rename'), defaultValue: current, confirmLabel: t('common_save'), allowEmpty: false });
+    if (name == null) return;
+    renameLand(id, name);
+  }
+  async function deleteLandConfirm(id: string, name: string): Promise<void> {
+    const ok = await dialogConfirm({ title: t('lands_delete_q', { name }), body: t('lands_delete_body'), confirmLabel: t('common_delete'), danger: true });
+    if (!ok) return;
+    const wasActive = $activeLandId === id;
+    deleteLand(id);
+    if (wasActive) setActiveLand('land-default');
+    showToast({ message: t('lands_deleted'), tone: 'ok' });
+  }
+  function switchLand(id: string): void {
+    setActiveLand(id);
+    showToast({ message: t('lands_switched'), tone: 'info' });
+  }
+
+  async function onExport(): Promise<void> {
+    try {
+      await downloadExport();
+      showToast({ message: t('settings_data_export_ok'), tone: 'ok' });
+    } catch {
+      showToast({ message: t('settings_data_export_err'), tone: 'error' });
+    }
+  }
+
+  async function onImportFile(e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const ok = await dialogConfirm({
+      title: t('settings_data_import_confirm_title'),
+      body: t('settings_data_import_confirm_body'),
+      confirmLabel: t('settings_data_import_confirm_ok'),
+      danger: true
+    });
+    if (!ok) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (!isValidExport(parsed)) {
+        showToast({ message: t('settings_data_import_invalid'), tone: 'error' });
+        return;
+      }
+      await importAllData(parsed);
+      showToast({ message: t('settings_data_import_ok'), tone: 'ok' });
+      setTimeout(() => location.reload(), 900);
+    } catch {
+      showToast({ message: t('settings_data_import_err'), tone: 'error' });
     }
   }
 
   function showStorageInfo(): void {
     dialogAlert({
-      title: 'Almacenamiento local',
+      title: t('set_storage_title'),
       body:
         persistenceMode() === 'opfs'
-          ? 'Tus datos se guardan en el almacenamiento persistente del navegador (OPFS). Funciona sin conexión y se mantiene entre sesiones.'
-          : 'Tu navegador no soporta OPFS, así que estamos en modo memoria. Los datos se borrarán al cerrar la pestaña. Para persistir, instala la app o usa Chrome/Firefox actualizados.'
+          ? t('set_storage_opfs')
+          : persistenceMode() === 'idb'
+          ? t('set_storage_idb')
+          : t('set_storage_memory')
     });
   }
 
   async function onInstall(): Promise<void> {
     const r = await triggerInstall();
-    if (r === 'accepted') showToast({ message: 'Instalando Kuxtal en tu dispositivo.', tone: 'ok' });
-    else if (r === 'dismissed') showToast({ message: 'Puedes instalar más tarde desde el menú del navegador.', tone: 'info' });
+    if (r === 'accepted') showToast({ message: t('set_install_accepted'), tone: 'ok' });
+    else if (r === 'dismissed') showToast({ message: t('set_install_later'), tone: 'info' });
     else {
       await dialogAlert({
-        title: 'Instalación',
-        body: 'Busca "Instalar app" o "Agregar a pantalla de inicio" en el menú de tu navegador.'
+        title: t('set_install_title'),
+        body: t('set_install_how')
       });
     }
   }
@@ -178,118 +287,264 @@
   <Wizard initial={editingInitial} mode="edit" onDone={finishEdit} />
 {/if}
 
-<nav class="set-index" aria-label="Secciones de ajustes">
+  <nav class="set-index" aria-label={t('a11y_settings_sections')}>
   {#each [
-    { id: 'plan', label: 'Mi plan', glyph: 'Sparkle' },
-    { id: 'paleta', label: 'Paleta', glyph: 'Layers' },
-    { id: 'a11y', label: 'Accesibilidad', glyph: 'Help' },
-    { id: 'datos', label: 'Datos', glyph: 'Box' },
-    { id: 'acerca', label: 'Acerca', glyph: 'Compass' }
+    { id: 'plan',   lk: 'settings_tab_plan',    glyph: 'Sparkle' },
+    { id: 'a11y',   lk: 'settings_tab_a11y',     glyph: 'Help'    },
+    { id: 'ack',    lk: 'settings_tab_ack',       glyph: 'People'    },
+    { id: 'datos',  lk: 'settings_tab_data',      glyph: 'Box'     },
+    { id: 'acerca', lk: 'settings_tab_about',     glyph: 'Compass' }
   ] as s}
     <button
       type="button"
       class="set-tab"
       class:on={activeSection === s.id}
       aria-pressed={activeSection === s.id}
-      onclick={() => (activeSection = s.id as any)}
+      onclick={() => { activeSection = s.id as any; announce(t('a11y_now_in', { name: t(s.lk as any) })); }}
     >
       <Glyph name={s.glyph as any} size={14} />
-      {s.label}
+      {t(s.lk as any)}
     </button>
   {/each}
 </nav>
 
-{#if activeSection === 'plan'}
+{#if activeSection === "plan"}
   <PlanCard onEdit={startEditOnboarding} />
+
+  <section class="card" style="margin-top: 12px;">
+    <div class="label">{t('lands_title')}</div>
+    <p class="sub" style="margin-top: 6px;">{t('lands_sub')}</p>
+    <div class="list" style="margin-top: 8px;">
+      {#each $lands as land (land.id)}
+        <div class="list-item" style="justify-content: space-between; gap: 8px;">
+          <button
+            type="button"
+            class="land-pick"
+            class:on={$activeLandId === land.id}
+            aria-pressed={$activeLandId === land.id}
+            onclick={() => switchLand(land.id)}
+          >
+            <Glyph name={$activeLandId === land.id ? 'Pin' : 'Map'} size={14} />
+            <span>{land.name}</span>
+            {#if $activeLandId === land.id}<span class="coord">· {t('lands_active')}</span>{/if}
+          </button>
+          <div class="row" style="gap: 4px;">
+            <button type="button" class="btn btn-sm btn-ghost" aria-label={t('lands_rename')} title={t('lands_rename')} onclick={() => renameLandPrompt(land.id, land.name)}>
+              <Glyph name="Sparkle" size={12} />
+            </button>
+            {#if $lands.length > 1}
+              <button type="button" class="btn btn-sm btn-danger" aria-label={t('lands_delete')} title={t('lands_delete')} onclick={() => deleteLandConfirm(land.id, land.name)}>
+                <Glyph name="Trash" size={12} />
+              </button>
+            {/if}
+          </div>
+        </div>
+      {/each}
+    </div>
+    <button type="button" class="btn btn-accent" style="margin-top: 10px;" onclick={createLandPrompt}>
+      <Glyph name="Plus" size={12} /> {t('lands_new')}
+    </button>
+  </section>
 {/if}
 
-{#if activeSection === 'paleta'}
-  <section class="card-warm card">
-    <div class="label">Paleta del códice</div>
-    <p class="sub" style="margin-top: 6px;">Elige el aire visual de Kuxtal.</p>
-    <div class="palette-grid" role="radiogroup" aria-label="Paleta de colores">
-      {#each palettes as p}
+{#if activeSection === 'ack'}
+  <section class="card">
+    <div class="label">{t('settings_ack_title')}</div>
+    <p class="sub" style="margin-top: 6px; font-family: var(--serif); font-weight: var(--display-weight); line-height: 1.6;">
+      {t('settings_ack_text')}
+    </p>
+
+    <div class="label" style="margin-top: 14px;">{t('settings_ack_practitioners')}</div>
+    {#if PRACTITIONERS.length}
+      <ul class="ack-list">
+        {#each PRACTITIONERS as p}<li>{p}</li>{/each}
+      </ul>
+    {:else}
+      <p class="sub" style="margin-top: 6px; font-style: italic;">{t('settings_ack_practitioners_todo')}</p>
+    {/if}
+
+    <div class="label" style="margin-top: 14px;">{t('settings_ack_sources')}</div>
+    <ul class="ack-list">
+      <li><a href={ACK_LINKS.pfaf} target="_blank" rel="noopener noreferrer">Plants For A Future</a> — {t('settings_ack_src_pfaf')}</li>
+      <li>{t('settings_ack_src_regional')}</li>
+      <li><a href={ACK_LINKS.osm} target="_blank" rel="noopener noreferrer">OpenStreetMap</a> — {t('settings_ack_src_osm')}</li>
+    </ul>
+  </section>
+{/if}
+
+{#if activeSection === 'a11y'}
+  <section class="card">
+    <div class="label">{t('settings_a11y_title')}</div>
+    <div class="weave" style="margin: 8px 0;" aria-hidden="true"></div>
+    <AccessibilityControls />
+  </section>
+  <section class="card" style="margin-top: 12px;">
+    <div class="label">{t('settings_palette_title')}</div>
+    <p class="sub" style="margin-top: 6px;">{t('settings_palette_sub')}</p>
+    <div class="row" style="margin-top: 10px; gap: 8px; flex-wrap: wrap;" role="group" aria-label={t('settings_palette_title')}>
+      {#each (['codice', 'noche', 'tierra', 'cartografico', 'botanico'] as const) as pv}
         <button
           type="button"
-          class="palette-card"
-          class:on={$palette === p.v}
-          role="radio"
-          aria-checked={$palette === p.v}
-          onclick={() => setPalette(p.v)}
+          class="lang-opt"
+          class:on={$palette === pv}
+          aria-pressed={$palette === pv}
+          onclick={() => setPalette(pv)}
         >
-          <span class="palette-swatch" style="background: {p.c};"></span>
-          <span>{p.l}</span>
+          {t(`palette_${pv}`)}
+        </button>
+      {/each}
+    </div>
+  </section>
+  <section class="card" style="margin-top: 12px;">
+    <div class="label">{t('settings_lang_title')}</div>
+    <p class="sub" style="margin-top: 6px;">{t('settings_lang_sub')}</p>
+    <div class="row" style="margin-top: 10px; gap: 8px;" role="group" aria-label={t('settings_lang_title')}>
+      {#each (['es', 'en'] as const).map((v) => ({ v, l: LOCALE_NAMES[v] })) as opt}
+        <button
+          type="button"
+          class="lang-opt"
+          class:on={getLocale() === opt.v}
+          aria-pressed={getLocale() === opt.v}
+          onclick={() => setLocale(opt.v as 'es' | 'en')}
+        >
+          {opt.l}
         </button>
       {/each}
     </div>
   </section>
 {/if}
 
-{#if activeSection === 'a11y'}
-  <section class="card">
-    <div class="label">Accesibilidad</div>
-    <div class="weave" style="margin: 8px 0;" aria-hidden="true"></div>
-    <div class="toggle-list">
-      {#each toggles as tg}
-        <label class="toggle-row">
-          <div class="toggle-text">
-            <b>{tg.label}</b>
-            <span class="sub">{tg.description}</span>
-          </div>
-          <button
-            type="button"
-            class="switch"
-            class:on={$prefs[tg.key]}
-            role="switch"
-            aria-checked={$prefs[tg.key]}
-            aria-label={tg.label}
-            onclick={() => setPref(tg.key, !$prefs[tg.key])}
-          >
-            <span class="knob"></span>
-          </button>
-        </label>
-      {/each}
-    </div>
-  </section>
-{/if}
-
 {#if activeSection === 'datos'}
+  <section class="card card-warm" aria-labelledby="dataflow-h">
+    <div class="label" id="dataflow-h">{t('settings_dataflow_title')}</div>
+    <div class="df-grid" style="margin-top: 8px;">
+      <div class="df-stat"><div class="df-n">{$planted.length}</div><div class="coord">{t('settings_dataflow_plants')}</div></div>
+      <div class="df-stat"><div class="df-n">{$zones.length}</div><div class="coord">{t('settings_dataflow_zones')}</div></div>
+      <div class="df-stat"><div class="df-n">{dataPanelCounts.logs}</div><div class="coord">{t('settings_dataflow_logs')}</div></div>
+      <div class="df-stat"><div class="df-n">{dataPanelCounts.resources}</div><div class="coord">{t('settings_dataflow_resources')}</div></div>
+    </div>
+    <p class="sub" style="margin-top: 10px; font-family: var(--serif); font-weight: var(--display-weight); line-height: 1.6;">
+      {$persistence === 'memory' ? t('settings_dataflow_statement_memory') : t('settings_dataflow_statement')}
+    </p>
+    <p class="sub" style="margin-top: 6px;">{t('settings_dataflow_external')}</p>
+  </section>
+
   {#if !$isStandalone}
     <section class="card">
-      <div class="label">Instalar Kuxtal</div>
-      <p class="sub" style="margin-top: 6px;">
-        Instala la app en tu pantalla de inicio para abrirla con un toque y usarla sin conexión.
-      </p>
+      <div class="label">{t('settings_data_install_title')}</div>
+      <p class="sub" style="margin-top: 6px;">{t('settings_data_install_sub')}</p>
       <button class="btn btn-primary" style="margin-top: 8px;" onclick={onInstall}>
         <Glyph name="ArrowRight" size={14} />
-        {$installAvailable ? 'Instalar app' : 'Cómo instalar en este navegador'}
+        {$installAvailable ? t('settings_data_install_btn') : t('settings_data_install_how')}
       </button>
     </section>
   {/if}
 
   <section class="card">
-    <div class="label">Datos locales</div>
+    <div class="label">{t('settings_data_local_title')}</div>
     <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
       <button class="btn" onclick={showStorageInfo}>
-        <Glyph name="Help" size={14} /> Estado de almacenamiento
+        <Glyph name="Help" size={14} /> {t('settings_data_storage_btn')}
       </button>
       <button class="btn btn-accent" onclick={() => (showMigrationModal = true)}>
-        <Glyph name="Map" size={14} /> Migrar tipo de lienzo
+        <Glyph name="Map" size={14} /> {t('settings_data_migrate_btn')}
       </button>
       <button class="btn btn-danger" onclick={clearAllData}>
-        <Glyph name="Trash" size={14} /> Borrar todos mis datos
+        <Glyph name="Trash" size={14} /> {t('settings_data_delete_btn')}
       </button>
     </div>
   </section>
 
   <section class="card">
-    <div class="label">Registro automático</div>
-    <p class="sub" style="margin-top: 6px;">
-      Si lo activas, cada vez que siembres o quites una planta se creará una entrada en el cuaderno con la especie, fecha y ubicación.
-    </p>
+    <div class="label">{t('settings_data_portability_title')}</div>
+    <p class="sub" style="margin-top: 6px;">{t('settings_data_portability_sub')}</p>
+    <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+      <button class="btn" onclick={onExport}>
+        <Glyph name="ArrowRight" size={14} /> {t('settings_data_export_btn')}
+      </button>
+      <button class="btn" onclick={() => downloadCsvExport()}>
+        <Glyph name="ArrowRight" size={14} /> {t('settings_data_export_csv_btn')}
+      </button>
+      <button class="btn" onclick={() => importInput?.click()}>
+        <Glyph name="Box" size={14} /> {t('settings_data_import_btn')}
+      </button>
+      <input
+        bind:this={importInput}
+        type="file"
+        accept="application/json,.json"
+        onchange={onImportFile}
+        style="display: none;"
+        tabindex="-1"
+        aria-hidden="true"
+      />
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="label">{t('cond_settings_title')}</div>
+    {#if $structuralConditions.length}
+      <ul class="ack-list">
+        {#each $structuralConditions as c}<li>{condLabel(c)}</li>{/each}
+      </ul>
+      <button class="btn btn-danger btn-sm" style="margin-top: 8px;" onclick={onClearConditions}>
+        <Glyph name="Trash" size={12} /> {t('cond_settings_clear')}
+      </button>
+    {:else}
+      <p class="sub" style="margin-top: 6px;">{t('cond_settings_none')}</p>
+    {/if}
+  </section>
+
+  <section class="card">
+    <div class="label">{t('rem_title')}</div>
+    <p class="sub" style="margin-top: 6px;">{t('rem_sub')}</p>
+    <div class="toggle-list">
+      {#each REMINDER_CATEGORIES as cat}
+        <div class="toggle-row">
+          <div class="toggle-text">
+            <b>{t(('rem_cat_' + cat) as any)}</b>
+            <span class="sub">{t(('rem_cat_' + cat + '_desc') as any)}</span>
+          </div>
+          <div class="row" style="gap: 8px; align-items: center;">
+            {#if reminders[cat].enabled}
+              <input
+                class="inp"
+                style="width: 60px; min-height: 36px;"
+                type="number"
+                min="1"
+                max="60"
+                value={reminders[cat].everyDays}
+                onchange={(e) => setReminder(cat, { everyDays: Math.max(1, Number((e.currentTarget as HTMLInputElement).value) || 1) })}
+                aria-label={t('rem_every_days')}
+              />
+              <span class="coord">{t('rem_days')}</span>
+            {/if}
+            <button
+              type="button"
+              class="switch"
+              class:on={reminders[cat].enabled}
+              role="switch"
+              aria-checked={reminders[cat].enabled}
+              aria-label={t(('rem_cat_' + cat) as any)}
+              onclick={() => setReminder(cat, { enabled: !reminders[cat].enabled })}
+            >
+              <span class="knob"></span>
+            </button>
+          </div>
+        </div>
+      {/each}
+    </div>
+    {#if anyEnabled(reminders) && !notifGranted}
+      <button type="button" class="btn btn-sm" style="margin-top: 8px;" onclick={askNotif}>{t('rem_enable_notif')}</button>
+    {/if}
+    <div class="banner" style="margin-top: 8px;">{t('rem_note')}</div>
+  </section>
+
+  <section class="card">
+    <div class="label">{t('settings_autolog_title')}</div>
+    <p class="sub" style="margin-top: 6px;">{t('settings_autolog_sub')}</p>
     <label class="row" style="gap: 8px; margin-top: 8px; align-items: center; cursor: pointer;">
       <input type="checkbox" checked={$autoLogPlants} onchange={(e) => autoLogPlants.set((e.currentTarget as HTMLInputElement).checked)} />
-      <span>Registrar siembras y eliminaciones en el Cuaderno</span>
+      <span>{t('settings_autolog_label')}</span>
     </label>
   </section>
 {/if}
@@ -300,25 +555,37 @@
 
 {#if activeSection === 'acerca'}
   <section class="card">
-    <div class="label">Acerca de Kuxtal</div>
-    <p class="sub" style="margin-top: 6px; font-family: var(--serif); line-height: 1.6;">
-      Kuxtal es un códice viviente para que cualquier persona pueda registrar y cuidar su tierra,
-      incluso sin conexión. Todo lo que guardas vive en tu dispositivo.
+    <div class="label">{t('settings_about_title')}</div>
+    <p class="sub" style="margin-top: 6px; font-family: var(--serif); font-weight: var(--display-weight); line-height: 1.6;">
+      {t('settings_about_text')}
+    </p>
+    <p class="sub" style="margin-top: 8px; font-family: var(--serif); font-weight: var(--display-weight); line-height: 1.6;">
+      {t('settings_about_dataflow')}
     </p>
   </section>
-
   <section class="card" style="margin-top: 12px;">
-    <div class="label">Enviar comentarios</div>
-    <p class="sub" style="margin-top: 6px;">
-      ¿Algo no funciona, falta una función, o quieres dejar de usar la app? Avísanos —
-      tu comentario nos ayuda a decidir qué simplificar o quitar.
+    <div class="label">{t('settings_about_deps_title')}</div>
+    <ul class="ack-list">
+      <li>{t('settings_about_dep_map')}: <a href={ACK_LINKS.osm} target="_blank" rel="noopener noreferrer">OpenStreetMap</a> · <a href={ACK_LINKS.openfreemap} target="_blank" rel="noopener noreferrer">OpenFreeMap</a></li>
+      <li>{t('settings_about_dep_plants')}: <a href={ACK_LINKS.pfaf} target="_blank" rel="noopener noreferrer">Plants For A Future</a></li>
+      <li>{t('settings_about_dep_engine')}: <a href={ACK_LINKS.maplibre} target="_blank" rel="noopener noreferrer">MapLibre</a> · <a href={ACK_LINKS.sqlite} target="_blank" rel="noopener noreferrer">SQLite WASM</a></li>
+    </ul>
+    <p class="sub" style="margin-top: 10px;">
+      {t('settings_about_license')} <a href={ACK_LINKS.license} target="_blank" rel="noopener noreferrer">AGPL-3.0</a>
     </p>
+    <a class="btn btn-ghost" href={ACK_LINKS.source} target="_blank" rel="noopener noreferrer" style="margin-top: 8px; display: inline-flex; align-items: center; gap: 6px;">
+      <Glyph name="ArrowRight" size={14} /> {t('settings_about_source_btn')}
+    </a>
+  </section>
+  <section class="card" style="margin-top: 12px;">
+    <div class="label">{t('settings_feedback_title')}</div>
+    <p class="sub" style="margin-top: 6px;">{t('settings_feedback_sub')}</p>
     <a
-      href="mailto:hola@kuxtal.example?subject=Comentarios%20Kuxtal"
+      href="mailto:melissapuerto@hotmail.com?subject=Comentarios%20Kuxtal"
       class="btn btn-ghost"
       style="margin-top: 10px; display: inline-flex; align-items: center; gap: 6px;"
     >
-      Escribir comentarios
+      {t('settings_feedback_btn')}
     </a>
   </section>
 {/if}
@@ -345,7 +612,7 @@
     padding: 6px 11px;
     border-radius: 4px;
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     letter-spacing: 0.08em;
     text-transform: uppercase;
     cursor: pointer;
@@ -356,23 +623,11 @@
   }
   .set-tab:hover { background: var(--paper-warm); }
   .set-tab.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-  .palette-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 10px; }
-  .palette-card {
-    display: flex; align-items: center; gap: 8px;
-    padding: 10px 12px; cursor: pointer; text-align: left;
-    background: var(--paper); border: 1.4px solid var(--line);
-    color: var(--ink); border-radius: 4px;
-    font-family: var(--sans); font-size: 13px;
-  }
-  .palette-card:hover { background: var(--paper-warm); }
-  .palette-card.on { border-color: var(--ink); background: var(--paper-warm); }
-  .palette-swatch { width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--ink); flex-shrink: 0; }
-
   .toggle-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
   .toggle-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
   .toggle-row:last-child { border-bottom: none; }
   .toggle-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-  .toggle-text b { font-family: var(--serif); font-weight: 400; font-size: 16px; color: var(--ink); }
+  .toggle-text b { font-family: var(--serif); font-weight: 400; font-size: calc(16px * var(--text-scale)); color: var(--ink); }
   .switch {
     width: 44px; height: 24px; border-radius: 999px;
     background: var(--line-strong); border: none; position: relative; cursor: pointer; flex-shrink: 0; padding: 0;
@@ -381,4 +636,39 @@
   .switch.on { background: var(--ocre); }
   .switch.on .knob { left: 22px; }
   :global(.a11y-reduced-motion) .switch .knob { transition: none !important; }
+
+  .lang-opt {
+    padding: 8px 20px;
+    border: 1.5px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink-soft);
+    font-family: var(--mono);
+    font-size: calc(11px * var(--text-scale));
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s var(--ease-codex);
+  }
+  .lang-opt:hover { background: var(--paper-warm); color: var(--ink); }
+  .lang-opt.on { background: var(--ocre); border-color: var(--ocre); color: var(--paper); }
+
+  .df-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .df-stat { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 8px 6px; text-align: center; }
+  .df-n { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(26px * var(--text-scale)); line-height: 1; color: var(--ink); }
+  @media (max-width: 480px) { .df-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .ack-list { margin: 8px 0 0; padding-left: 20px; }
+  .ack-list li { font-size: calc(13px * var(--text-scale)); color: var(--ink-soft); line-height: 1.6; margin: 3px 0; }
+  /* Underline so links are distinguishable by more than colour (WCAG 1.4.1). */
+  .ack-list a { color: var(--ocre-deep); text-decoration: underline; }
+
+  .land-pick {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: transparent; border: none; color: var(--ink);
+    cursor: pointer; font-family: var(--sans); font-size: calc(14px * var(--text-scale));
+    padding: 4px 6px; border-radius: 4px; text-align: left; min-height: 32px;
+  }
+  .land-pick:hover { background: var(--paper-warm); }
+  .land-pick.on { font-weight: 600; }
 </style>

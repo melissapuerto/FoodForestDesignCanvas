@@ -288,6 +288,22 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE task ADD COLUMN location_geojson TEXT;
       ALTER TABLE task ADD COLUMN scheduled_at TEXT;
     `
+  },
+  {
+    version: 8,
+    up: `
+      -- Optional ecological metadata for filtering suggestions
+      ALTER TABLE plant_species ADD COLUMN region TEXT;
+      ALTER TABLE plant_species ADD COLUMN microclimates TEXT;
+    `
+  },
+  {
+    version: 9,
+    up: `
+      -- Microzone overrides for spot-level recommendations (see recommend/microzone.ts)
+      ALTER TABLE zone ADD COLUMN microzone_preset TEXT;
+      ALTER TABLE zone ADD COLUMN microzone_overrides TEXT;
+    `
   }
 ];
 

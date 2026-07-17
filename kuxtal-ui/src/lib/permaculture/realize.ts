@@ -2,14 +2,16 @@
 // representing each suggested permaculture zone. Polygons approximate rings with
 // 32-segment circles in WGS84.
 
-import { exec, selectAll } from '../db/sqlite';
+import { exec, isDbReady, selectAll } from '../db/sqlite';
 import { newId, nowIso } from '../utils/id';
 import { metersToDegLat, metersToDegLng } from '../map/geometry';
+import { ensureSpeciesIdForName } from '../pfaf/syncSpecies';
 import type { Plan, ZoneProposal } from './types';
 
 const STORAGE_KEY = 'permaculture.plan';
 
 export function savePlan(plan: Plan): void {
+  if (!isDbReady()) return;
   exec(
     `INSERT INTO app_settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -18,6 +20,7 @@ export function savePlan(plan: Plan): void {
 }
 
 export function loadPlan(): Plan | null {
+  if (!isDbReady()) return null;
   try {
     const rows = selectAll<{ value: string }>(
       'SELECT value FROM app_settings WHERE key = ?',
@@ -124,7 +127,76 @@ export function setBoundaryFromPlan(landId: string, centerLat: number, centerLng
 export type Materialization = {
   zonesCreated: number;
   boundaryCreated: boolean;
+  plantsCreated: number;
 };
+
+function positionInRing(
+  centerLat: number,
+  centerLng: number,
+  innerRadiusM: number,
+  outerRadiusM: number,
+  index: number,
+  total: number
+): { lat: number; lng: number } {
+  const r = innerRadiusM + (outerRadiusM - innerRadiusM) * 0.55;
+  const angle = total > 0 ? (index / total) * 2 * Math.PI : 0;
+  const dLat = metersToDegLat(r * Math.sin(angle));
+  const dLng = metersToDegLng(r * Math.cos(angle), centerLat);
+  return { lat: centerLat + dLat, lng: centerLng + dLng };
+}
+
+/**
+ * Place suggested species on the map inside each zone ring (requires zones + coordinates).
+ */
+export function materializePlantsFromPlan(
+  plan: Plan,
+  landId: string,
+  centerLat: number,
+  centerLng: number
+): number {
+  if (!plan.zones.length) return 0;
+  const now = nowIso();
+  let prevR = 0;
+  let placed = 0;
+
+  for (const z of plan.zones) {
+    const outerR = z.ringRadiusM;
+    const species = z.suggestedSpecies;
+    const total = species.length;
+    species.forEach((name, idx) => {
+      const speciesId = ensureSpeciesIdForName(name);
+      if (!speciesId) return;
+      const { lat, lng } = positionInRing(centerLat, centerLng, prevR, outerR, idx, total);
+      exec(
+        `INSERT INTO planted (id, land_id, zone_id, species_id, lat, lng, planted_at, notes, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [
+          newId('plt'),
+          landId,
+          null,
+          speciesId,
+          lat,
+          lng,
+          now.slice(0, 10),
+          `Plan inicial · Zona ${z.zone}`,
+          now,
+          now
+        ]
+      );
+      placed++;
+    });
+    prevR = outerR;
+  }
+
+  return placed;
+}
+
+export function saveLandCenter(landId: string, centerLat: number, centerLng: number): void {
+  exec(
+    `UPDATE land SET center_lat = ?, center_lng = ?, updated_at = ? WHERE id = ?`,
+    [centerLat, centerLng, nowIso(), landId]
+  );
+}
 
 export function materializeFromPlan(opts: {
   plan: Plan;
@@ -133,9 +205,19 @@ export function materializeFromPlan(opts: {
   centerLng: number;
   createBoundary: boolean;
   createZones: boolean;
+  createPlants?: boolean;
 }): Materialization {
+  if (!isDbReady()) {
+    return { zonesCreated: 0, boundaryCreated: false, plantsCreated: 0 };
+  }
   let zonesCreated = 0;
   let boundaryCreated = false;
+  let plantsCreated = 0;
+
+  if (Number.isFinite(opts.centerLat) && Number.isFinite(opts.centerLng)) {
+    saveLandCenter(opts.landId, opts.centerLat, opts.centerLng);
+  }
+
   if (opts.createBoundary) {
     setBoundaryFromPlan(opts.landId, opts.centerLat, opts.centerLng, opts.plan);
     boundaryCreated = true;
@@ -143,7 +225,21 @@ export function materializeFromPlan(opts: {
   if (opts.createZones) {
     zonesCreated = materializeZones(opts.plan, opts.landId, opts.centerLat, opts.centerLng);
   }
-  return { zonesCreated, boundaryCreated };
+  if (opts.createPlants && opts.centerLat && opts.centerLng) {
+    const existing = selectAll<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM planted WHERE land_id = ?',
+      [opts.landId]
+    );
+    if ((existing[0]?.n ?? 0) === 0) {
+      plantsCreated = materializePlantsFromPlan(
+        opts.plan,
+        opts.landId,
+        opts.centerLat,
+        opts.centerLng
+      );
+    }
+  }
+  return { zonesCreated, boundaryCreated, plantsCreated };
 }
 
 export type ZoneSummary = ZoneProposal & { layerName: string };

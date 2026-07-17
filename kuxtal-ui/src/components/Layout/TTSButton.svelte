@@ -1,5 +1,6 @@
 <script lang="ts">
   import Glyph from '../../lib/glyphs/Glyph.svelte';
+  import { t, getLocale } from '../../lib/i18n/index.svelte';
 
   let speaking = $state(false);
   let utterance: SpeechSynthesisUtterance | null = null;
@@ -8,13 +9,16 @@
     stop();
     if (!window.speechSynthesis) return;
     utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'es-MX';
+    // Match the spoken language to the app locale so English content is not
+    // read aloud with a Spanish voice (and vice versa).
+    const loc = getLocale();
+    const langPrefix = loc === 'en' ? 'en' : 'es';
+    utterance.lang = loc === 'en' ? 'en-US' : 'es-MX';
     utterance.rate = 0.9;
     utterance.pitch = 1;
-    // Try to find a Spanish voice
     const voices = window.speechSynthesis.getVoices();
-    const esVoice = voices.find(v => v.lang.startsWith('es'));
-    if (esVoice) utterance.voice = esVoice;
+    const match = voices.find(v => v.lang.startsWith(langPrefix));
+    if (match) utterance.voice = match;
     utterance.onstart = () => (speaking = true);
     utterance.onend = () => (speaking = false);
     utterance.onerror = () => (speaking = false);
@@ -37,8 +41,8 @@
     type="button"
     class="tts-btn"
     onclick={toggle}
-    aria-label="Parar lectura"
-    title="Parar lectura en voz alta"
+    aria-label={t('tts_stop_aria')}
+    title={t('tts_stop_title')}
   >
     <Glyph name="Mic" size={16} />
     <span class="tts-pulse"></span>
@@ -48,9 +52,9 @@
 <style>
   .tts-btn {
     position: fixed;
-    bottom: 90px;
-    right: 16px;
-    z-index: 14;
+    bottom: calc(var(--nav-h) + var(--safe-bottom) + 14px);
+    right: calc(16px + var(--safe-right));
+    z-index: var(--z-canvas-tip);
     width: 44px;
     height: 44px;
     border: none;
@@ -75,5 +79,15 @@
   @keyframes ttsPulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0; transform: scale(1.4); }
+  }
+
+  /* On phones the bottom edge is crowded (nav + tool rail). Dock the stop
+     button just under the top bar instead so it never overlaps the tools. */
+  @media (max-width: 760px) {
+    .tts-btn {
+      bottom: auto;
+      top: calc(var(--topbar-h) + 10px);
+      right: calc(8px + var(--safe-right));
+    }
   }
 </style>

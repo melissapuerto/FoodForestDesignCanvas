@@ -16,6 +16,8 @@
     deleteZone,
     restorePlanted,
     restoreZone,
+    getPlantedById,
+    getZoneById,
     speciesById,
     insertWaterFeature,
     deleteWaterFeature,
@@ -39,6 +41,7 @@
   import { showToast } from '../../lib/stores/toast';
   import { dialogPrompt, dialogAlert, dialogConfirm } from '../../lib/stores/dialog';
   import { offerUndo } from '../../lib/stores/undo';
+  import { pushCommand } from '../../lib/stores/history';
   import { plantTone, plantGlyph } from '../../lib/glyphs/mapping';
   import { GLYPHS, type GlyphName } from '../../lib/glyphs/glyph-data';
   import { formatMeters } from '../../lib/utils/format';
@@ -50,7 +53,15 @@
   import MeasurementOverlay from './MeasurementOverlay.svelte';
   import RelationshipPanel from './RelationshipPanel.svelte';
   import LocationPicker from './LocationPicker.svelte';
+  import { localRuleMessage, localSpeciesName } from '../../lib/i18n/dataLocal';
   import { addRecentPlant } from '../../lib/stores/recents';
+  import { allNormalizedPlants, type NormalizedPlant } from '../../lib/pfaf/pfafSchema';
+  import { getEngineSite } from '../../lib/recommend/site';
+  import { buildCanvasState } from '../../lib/recommend/canvasState';
+  import { buildRuleIndex } from '../../lib/recommend/ruleIndex';
+  import { scorePlant } from '../../lib/recommend/scorePlant';
+  import { applyMicrozone, microzoneAt } from '../../lib/recommend/microzone';
+  import { t } from '../../lib/i18n/index.svelte';
 
   let {
     landId,
@@ -131,6 +142,25 @@
   let ghostRules = $state<Array<{ message: string; tone: 'warn' | 'help' }>>([]);
   let ghostBlocked = $state(false);
   let ghostBlockMessage = $state<string | null>(null);
+  let ghostScore = $state<number | null>(null);
+
+  function normalizedForSpecies(speciesId: string): NormalizedPlant | null {
+    const pool = allNormalizedPlants();
+    const byId = pool.find((p) => p.id === speciesId);
+    if (byId) return byId;
+    const sci = speciesById(speciesId)?.scientific_name?.toLowerCase();
+    return sci ? pool.find((p) => p.sci.toLowerCase() === sci) ?? null : null;
+  }
+
+  function computeGhostScore(at: LngLat): number | null {
+    if (!selectedSpeciesId) return null;
+    const candidate = normalizedForSpecies(selectedSpeciesId);
+    if (!candidate) return null;
+    const site = applyMicrozone(getEngineSite(), microzoneAt(at, zoneRows));
+    const canvas = buildCanvasState(plantedRows, speciesList, { lat: at.lat, lng: at.lng });
+    const score = scorePlant(candidate, site, canvas, buildRuleIndex());
+    return score.eligible ? Math.round(score.total) : null;
+  }
 
   let speciesList = $state<SpeciesRow[]>([]);
   let zoneRows = $state<ZoneRow[]>([]);
@@ -149,6 +179,15 @@
     plants: plantedRows.length,
     hasBoundary: !!getLand(landId)?.boundary_closed
   });
+
+  const waterTypeNames = $derived<Record<string, string>>({
+    pond: t('map_water_pond'), river: t('map_water_river'), channel: t('map_water_channel'),
+    well: t('map_water_well'), spring: t('map_water_spring'), swale: t('map_water_swale'), other: t('map_water_other'),
+  });
+  const shapeOptions = $derived([
+    { v: 'free', l: t('map_shape_free') }, { v: 'square', l: t('map_shape_square') },
+    { v: 'rectangle', l: t('map_shape_rectangle') }, { v: 'circle', l: t('map_shape_circle') },
+  ]);
 
   const spatial = new GeoSpatialIndex();
   const plantMarkers = new Map<string, maplibregl.Marker>();
@@ -477,16 +516,16 @@
 
     if (editingType === 'boundary') {
       exec(`UPDATE land SET boundary_geojson = ? WHERE id = ?`, [JSON.stringify(geo), landId]);
-      showToast({ message: 'Contorno actualizado.', tone: 'ok' });
+      showToast({ message: t('map_boundary_updated'), tone: 'ok' });
     } else if (editingType === 'zone') {
       exec(`UPDATE zone SET polygon_geojson = ? WHERE id = ?`, [JSON.stringify(geo), editingId]);
-      showToast({ message: 'Zona actualizada.', tone: 'ok' });
+      showToast({ message: t('map_zone_updated'), tone: 'ok' });
     } else if (editingType === 'water') {
       exec(`UPDATE water_feature SET geometry_geojson = ? WHERE id = ?`, [JSON.stringify(geo), editingId]);
-      showToast({ message: 'Agua actualizada.', tone: 'ok' });
+      showToast({ message: t('map_water_updated'), tone: 'ok' });
     } else if (editingType === 'plant') {
       exec(`UPDATE planted SET lng = ?, lat = ? WHERE id = ?`, [pts[0].lng, pts[0].lat, editingId]);
-      showToast({ message: 'Planta movida.', tone: 'ok' });
+      showToast({ message: t('map_plant_moved'), tone: 'ok' });
     }
 
     reloadFromDb(landId);
@@ -515,7 +554,7 @@
   async function renameEditing(): Promise<void> {
     if (!editingId || !editingType || editingType === 'boundary' || editingType === 'plant') return;
     const currentName = editingType === 'zone' ? zoneRows.find(z => z.id === editingId)?.name : $waterFeatures.find(w => w.id === editingId)?.name;
-    const name = await dialogPrompt({ title: 'Renombrar', body: 'Nuevo nombre:', defaultValue: currentName || '' });
+    const name = await dialogPrompt({ title: t('map_rename_title'), body: t('map_rename_body'), defaultValue: currentName || '' });
     if (name === null) return;
     if (editingType === 'zone') {
       exec(`UPDATE zone SET name = ? WHERE id = ?`, [name.trim(), editingId]);
@@ -523,7 +562,7 @@
       exec(`UPDATE water_feature SET name = ? WHERE id = ?`, [name.trim(), editingId]);
     }
     reloadFromDb(landId);
-    showToast({ message: 'Nombre actualizado.', tone: 'ok' });
+    showToast({ message: t('map_name_updated'), tone: 'ok' });
   }
 
   // ---------- Lifecycle ----------
@@ -597,6 +636,7 @@
       ghostRules = [];
       ghostBlocked = false;
       ghostBlockMessage = null;
+      ghostScore = null;
     });
   });
 
@@ -923,7 +963,7 @@
       searchRadiusM: 30
     }).filter((h) => h.withEntityId !== plantId && h.distanceM > radius * 0.9);
     hoveredPlantRules = hits.slice(0, 3).map((h) => ({
-      message: h.rule.message,
+      message: localRuleMessage(h.rule),
       tone: (h.rule.relationship === 'incompatible' || h.rule.relationship === 'harmful') ? 'warn' : 'help'
     }));
   }
@@ -1083,6 +1123,22 @@
     selectedSpeciesId = id;
     tool = 'plant';
     if (map) map.getCanvas().style.cursor = 'copy';
+  }
+  /**
+   * Non-visual placement entry point (used by the keyboard/screen-reader
+   * CanvasInventory panel). Places a given species at explicit coordinates,
+   * reusing the full placement path — collision check, companion-rule
+   * messages, undo command and auto-log — so it behaves exactly like a map tap.
+   */
+  export function placeSpeciesAt(speciesId: string, lat: number, lng: number): { warns: string[]; helps: string[]; collision: boolean } | null {
+    selectedSpeciesId = speciesId;
+    return placePlant({ lat, lng });
+  }
+  /** Current map-centre coordinates, or null if the map isn't ready. */
+  export function getCenterLngLat(): { lat: number; lng: number } | null {
+    if (!map) return null;
+    const c = map.getCenter();
+    return { lat: c.lat, lng: c.lng };
   }
   function setMode(m: '2d' | '3d'): void {
     if (m === mode || switchingMode) return;
@@ -1427,6 +1483,7 @@
         ghostRules = [];
         ghostBlocked = false;
         ghostBlockMessage = null;
+        ghostScore = null;
       }
       return;
     }
@@ -1436,8 +1493,9 @@
     const collision = spatial.collidesAt(ll, radius);
     if (collision) {
       ghostBlocked = true;
-      ghostBlockMessage = `Muy cerca de otra planta (mín. ${formatMeters(Math.min(radius * 2, collision.radiusM * 2))}).`;
+      ghostBlockMessage = t('map_too_close', { dist: formatMeters(Math.min(radius * 2, collision.radiusM * 2)) });
       ghostRules = [];
+      ghostScore = null;
     } else {
       ghostBlocked = false;
       ghostBlockMessage = null;
@@ -1449,9 +1507,10 @@
         searchRadiusM: 30
       });
       ghostRules = hits.slice(0, 3).map((h) => ({
-        message: h.rule.message,
+        message: localRuleMessage(h.rule),
         tone: (h.rule.relationship === 'incompatible' || h.rule.relationship === 'harmful') ? 'warn' : 'help'
       }));
+      ghostScore = computeGhostScore(ll);
     }
     ghostPos = { x: e.point.x, y: e.point.y };
   }
@@ -1504,7 +1563,7 @@
     shapeAnchor = null;
     refreshDraftSources();
     refreshLayers();
-    showToast({ message: 'Contorno guardado.', tone: 'ok' });
+    showToast({ message: t('map_boundary_saved'), tone: 'ok' });
     tool = 'pan';
   }
 
@@ -1607,13 +1666,13 @@
     placePlant({ lng: c.lng, lat: c.lat });
   }
 
-  function placePlant(ll: LngLat): void {
+  function placePlant(ll: LngLat): { warns: string[]; helps: string[]; collision: boolean } | null {
     if (!selectedSpeciesId) {
-      showToast({ message: 'Elige primero una especie.', tone: 'warn' });
-      return;
+      showToast({ message: t('map_pick_species'), tone: 'warn' });
+      return null;
     }
     const sp = speciesById(selectedSpeciesId);
-    if (!sp) return;
+    if (!sp) return null;
     const radius = sp.spacing_m / 2;
 
     const collision = spatial.collidesAt(ll, radius);
@@ -1621,9 +1680,9 @@
       // Non-blocking: show tooltip warning but allow planting.
       pushRuleMessage({
         tone: 'warn',
-        title: `${sp.common_name} · espacio justo`,
+        title: t('map_tight_space', { name: sp.common_name }),
         speciesName: sp.common_name,
-        lines: [`Distancia mínima sugerida ~${formatMeters(Math.min(radius * 2, collision.radiusM * 2))}.`]
+        lines: [t('map_min_distance', { dist: formatMeters(Math.min(radius * 2, collision.radiusM * 2)) })]
       });
     }
 
@@ -1635,7 +1694,15 @@
       searchRadiusM: 30
     });
 
-    insertPlanted({ landId, speciesId: selectedSpeciesId, lat: ll.lat, lng: ll.lng });
+    const newPlantId = insertPlanted({ landId, speciesId: selectedSpeciesId, lat: ll.lat, lng: ll.lng });
+    const newPlantRow = getPlantedById(newPlantId);
+    if (newPlantRow) {
+      pushCommand({
+        label: t('hist_plant_added'),
+        undo: () => deletePlanted(newPlantId, landId),
+        redo: () => restorePlanted(newPlantRow)
+      });
+    }
     addRecentPlant(selectedSpeciesId);
 
     const warns: string[] = [];
@@ -1647,11 +1714,15 @@
     }
 
     if (warns.length) {
-      pushRuleMessage({ tone: 'warn', title: `${sp.common_name} · cuidado`, speciesName: `${sp.common_name}-warn`, lines: warns });
+      pushRuleMessage({ tone: 'warn', title: t('map_rule_warn_title', { name: sp.common_name }), speciesName: `${sp.common_name}-warn`, lines: warns });
     }
     if (helps.length) {
-      pushRuleMessage({ tone: 'help', title: `${sp.common_name} · compañeras`, speciesName: `${sp.common_name}-help`, lines: helps });
+      pushRuleMessage({ tone: 'help', title: t('map_rule_help_title', { name: sp.common_name }), speciesName: `${sp.common_name}-help`, lines: helps });
     }
+
+    // Returned so non-visual callers (CanvasInventory) can announce the same
+    // companion-rule feedback the map shows visually in the RuleMessageStack.
+    return { warns, helps, collision: !!collision };
   }
 
   async function finishBoundary(): Promise<void> {
@@ -1661,7 +1732,7 @@
     drawingBoundary = [];
     refreshDraftSources();
     refreshLayers();
-    showToast({ message: 'Contorno guardado.', tone: 'ok' });
+    showToast({ message: t('map_boundary_saved'), tone: 'ok' });
     tool = 'pan';
   }
 
@@ -1669,10 +1740,10 @@
     if (pts.length < 3) return;
     const defaultName = `Zona ${stats.zones + 1}`;
     const name = await dialogPrompt({
-      title: 'Nombre de la zona',
-      body: 'Dale un nombre que recuerdes.',
+      title: t('map_zone_name_title'),
+      body: t('map_zone_name_body'),
       defaultValue: defaultName,
-      confirmLabel: 'Guardar'
+      confirmLabel: t('common_save')
     });
     if (name === null) {
       drawingZone = [];
@@ -1681,11 +1752,19 @@
       return;
     }
     const polygon = polygonToGeoJson(pts);
-    insertZone({ landId, name: name.trim() || defaultName, polygon });
+    const newZoneId = insertZone({ landId, name: name.trim() || defaultName, polygon });
+    const newZoneRow = getZoneById(newZoneId);
+    if (newZoneRow) {
+      pushCommand({
+        label: t('hist_zone_added'),
+        undo: () => deleteZone(newZoneId, landId),
+        redo: () => restoreZone(newZoneRow)
+      });
+    }
     drawingZone = [];
     zoneAnchor = null;
     refreshDraftSources();
-    showToast({ message: `Zona "${name.trim() || defaultName}" guardada.`, tone: 'ok' });
+    showToast({ message: t('map_zone_saved', { name: name.trim() || defaultName }), tone: 'ok' });
     tool = 'pan';
   }
 
@@ -1704,15 +1783,13 @@
     if (drawingWater.length < 1) return;
     if ((waterType === 'pond' || waterType === 'river' || waterType === 'channel' || waterType === 'swale') && drawingWater.length < 2) return;
     
-    const typeNames: Record<string, string> = {
-      pond: 'Estanque', river: 'Río', channel: 'Zanja', well: 'Pozo', spring: 'Manantial', swale: 'Zanja de infiltración', other: 'Agua'
-    };
-    const defaultName = `${typeNames[waterType]} ${waterFeatureRows.length + 1}`;
+    const typeName = waterTypeNames[waterType] ?? waterType;
+    const defaultName = `${typeName} ${waterFeatureRows.length + 1}`;
     const name = await dialogPrompt({
-      title: `Nombre de ${typeNames[waterType].toLowerCase()}`,
-      body: 'Dale un nombre o referencia.',
+      title: t('map_water_name_title', { type: typeName.toLowerCase() }),
+      body: t('map_water_name_body'),
       defaultValue: defaultName,
-      confirmLabel: 'Guardar'
+      confirmLabel: t('common_save')
     });
     
     if (name === null) { drawingWater = []; refreshDraftSources(); return; }
@@ -1725,21 +1802,21 @@
     insertWaterFeature({ landId, name: name.trim() || defaultName, type: waterType, geometry });
     drawingWater = [];
     refreshDraftSources();
-    showToast({ message: `Agua "${name.trim() || defaultName}" guardada.`, tone: 'ok' });
+    showToast({ message: t('map_water_saved', { name: name.trim() || defaultName }), tone: 'ok' });
     tool = 'pan';
   }
 
   async function clearBoundary(): Promise<void> {
     const ok = await dialogConfirm({
-      title: '¿Borrar el contorno?',
-      body: 'Las zonas y plantas se mantienen.',
-      confirmLabel: 'Borrar contorno',
+      title: t('map_clear_boundary_title'),
+      body: t('map_clear_boundary_body'),
+      confirmLabel: t('map_clear_boundary_btn'),
       danger: true
     });
     if (!ok) return;
     updateLandBoundary(landId, null, false);
     refreshLayers();
-    showToast({ message: 'Contorno borrado.', tone: 'ok' });
+    showToast({ message: t('map_boundary_deleted'), tone: 'ok' });
   }
 
   async function askDeletePlant(id: string): Promise<void> {
@@ -1747,16 +1824,21 @@
     if (!row) return;
     const sp = speciesById(row.species_id);
     const ok = await dialogConfirm({
-      title: `¿Borrar ${sp?.common_name ?? 'esta planta'}?`,
-      confirmLabel: 'Borrar',
+      title: t('map_delete_plant_title', { name: sp?.common_name ?? t('map_default_plant') }),
+      confirmLabel: t('common_delete'),
       danger: true
     });
     if (!ok) return;
     const deleted = deletePlanted(id, landId);
     if (deleted) {
       offerUndo({
-        description: `Borraste ${sp?.common_name ?? 'una planta'}.`,
-        perform: () => { restorePlanted(deleted); showToast({ message: 'Planta restaurada.', tone: 'ok' }); }
+        description: t('map_undo_plant_deleted', { name: sp?.common_name ?? t('map_default_plant_article') }),
+        perform: () => { restorePlanted(deleted); showToast({ message: t('map_plant_restored'), tone: 'ok' }); }
+      });
+      pushCommand({
+        label: t('hist_plant_removed'),
+        undo: () => restorePlanted(deleted),
+        redo: () => deletePlanted(deleted.id, landId)
       });
     }
   }
@@ -1765,16 +1847,21 @@
     const row = zoneRows.find((z) => z.id === id);
     if (!row) return;
     const ok = await dialogConfirm({
-      title: `¿Borrar la zona "${row.name}"?`,
-      confirmLabel: 'Borrar zona',
+      title: t('map_delete_zone_title', { name: row.name }),
+      confirmLabel: t('map_delete_zone_btn'),
       danger: true
     });
     if (!ok) return;
     const deleted = deleteZone(id, landId);
     if (deleted) {
       offerUndo({
-        description: `Borraste la zona "${row.name}".`,
-        perform: () => { restoreZone(deleted); showToast({ message: 'Zona restaurada.', tone: 'ok' }); }
+        description: t('map_undo_zone_deleted', { name: row.name }),
+        perform: () => { restoreZone(deleted); showToast({ message: t('map_zone_restored'), tone: 'ok' }); }
+      });
+      pushCommand({
+        label: t('hist_zone_removed'),
+        undo: () => restoreZone(deleted),
+        redo: () => deleteZone(deleted.id, landId)
       });
     }
   }
@@ -1783,16 +1870,16 @@
     const row = waterFeatureRows.find((w) => w.id === id);
     if (!row) return;
     const ok = await dialogConfirm({
-      title: `¿Borrar "${row.name}"?`,
-      confirmLabel: 'Borrar agua',
+      title: t('map_delete_generic_title', { name: row.name }),
+      confirmLabel: t('map_delete_water_btn'),
       danger: true
     });
     if (!ok) return;
     const deleted = deleteWaterFeature(id, landId);
     if (deleted) {
       offerUndo({
-        description: `Borraste "${row.name}".`,
-        perform: () => { restoreWaterFeature(deleted); showToast({ message: 'Agua restaurada.', tone: 'ok' }); }
+        description: t('map_undo_deleted', { name: row.name }),
+        perform: () => { restoreWaterFeature(deleted); showToast({ message: t('map_water_restored'), tone: 'ok' }); }
       });
     }
   }
@@ -1814,7 +1901,7 @@
   function fitToBoundary(): void {
     const land = getLand(landId);
     if (!map || !land?.boundary_geojson) {
-      showToast({ message: 'Aún no has dibujado un contorno.', tone: 'info' });
+      showToast({ message: t('map_no_boundary'), tone: 'info' });
       return;
     }
     const geo = JSON.parse(land.boundary_geojson) as GeoJSON.Polygon;
@@ -1833,17 +1920,17 @@
 
   async function locateMe(): Promise<void> {
     if (!navigator.geolocation || !map) return;
-    showToast({ message: 'Buscando tu ubicación...', tone: 'info' });
+    showToast({ message: t('map_locating'), tone: 'info' });
     navigator.geolocation.getCurrentPosition(
       (pos) => { map?.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 18, duration: 800 }); },
-      async (err) => { await dialogAlert({ title: 'No pude usar tu ubicación', body: 'Activa el GPS y permisos.' }); },
+      async (err) => { await dialogAlert({ title: t('map_location_err_title'), body: t('map_location_err_body') }); },
       { enableHighAccuracy: true, timeout: 8000 }
     );
   }
 </script>
 
 <div class="lienzo" class:transitioning>
-  <div bind:this={mapEl} class="lienzo-map" aria-hidden="true"></div>
+  <div bind:this={mapEl} class="lienzo-map" data-tour="canvas" aria-hidden="true"></div>
 
   <MeasurementOverlay {map} visible={showMeasurements} />
 
@@ -1857,21 +1944,22 @@
     {#if sp && pRow}
       <div class="plant-tip codex-card-soft" style="left: {Math.min(hoverPos.x + 16, (typeof window !== 'undefined' ? window.innerWidth - 300 : 800))}px; top: {Math.max(hoverPos.y - 16, 8)}px; --tone: {toneCss(sp.id)};">
         <div class="tip-head">
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderGlyphSvg only emits the internal glyph-data.ts path constants, never user input -->
           <span class="tip-glyph">{@html renderGlyphSvg((sp.glyph as GlyphName | null) || plantGlyph(sp.id))}</span>
           <div class="tip-text">
-            <span class="tip-name">{sp.common_name}</span>
+            <span class="tip-name">{localSpeciesName(sp.common_name, sp.scientific_name)}</span>
             <span class="tip-latin">{sp.scientific_name}</span>
           </div>
         </div>
         <div class="tip-meta">
           <span class="badge">{sp.plant_type}</span>
-          <span class="badge">Diam: {sp.spacing_m}m</span>
+          <span class="badge">{t('map_diam_label')} {sp.spacing_m}m</span>
         </div>
         {#if hoveredPlantRules.length > 0}
           <div class="tip-rules">
             {#each hoveredPlantRules as r}
               <div class="tip-rule {r.tone}">
-                <div class="tip-rule-label">{r.tone === 'warn' ? 'Atención' : 'Compañera'}</div>
+                <div class="tip-rule-label">{r.tone === 'warn' ? t('map_rule_caution') : t('map_rule_companion_label')}</div>
                 <div class="tip-rule-msg">{r.message}</div>
               </div>
             {/each}
@@ -1882,7 +1970,7 @@
   {:else if hoverWaterId && !editingId}
     {@const wRow = waterFeatureRows.find(w => w.id === hoverWaterId)}
     {#if wRow}
-      {@const wtypeLabels = { pond: 'Estanque', river: 'Río', channel: 'Zanja', swale: 'Infiltración', well: 'Pozo', spring: 'Manantial' } as Record<string, string>}
+      {@const wtypeLabels = waterTypeNames}
       <div class="zone-tip codex-card-soft" style="left: {Math.min(hoverPos.x + 12, (typeof window !== 'undefined' ? window.innerWidth - 300 : 800))}px; top: {Math.max(hoverPos.y - 12, 8)}px; --tone: #2980B9;">
         <div class="zt-head">
           <span class="zt-tag" style="background: #2980B9;">{wtypeLabels[wRow.type] ?? wRow.type}</span>
@@ -1903,7 +1991,7 @@
           <span class="zt-name">{zRow.name}</span>
         </div>
         {#if meta.intent}<div class="zt-intent">{meta.intent}</div>{/if}
-        {#if zRow.elevation_m}<div class="zt-notes">Elevación: {zRow.elevation_m.toFixed(1)}m</div>{/if}
+        {#if zRow.elevation_m}<div class="zt-notes">{t('map_elevation_label')} {zRow.elevation_m.toFixed(1)}m</div>{/if}
       </div>
     {/if}
   {/if}
@@ -1913,14 +2001,17 @@
     {@const sp = speciesById(selectedSpeciesId)}
     {#if sp}
       <div class="ghost-tip codex-card-soft" style="left: {ghostPos.x + 16}px; top: {ghostPos.y + 16}px; --tone: {ghostBlocked ? 'var(--cinabrio)' : toneCss(sp.id)};">
-        <div class="gt-label">{ghostBlocked ? 'Bloqueado' : 'Posible lugar'}</div>
+        <div class="gt-label">
+          {ghostBlocked ? t('map_blocked') : t('map_possible_spot')}
+          {#if !ghostBlocked && ghostScore !== null}<span class="gt-score">{t('map_suitability_label')} {ghostScore}</span>{/if}
+        </div>
         {#if ghostBlocked && ghostBlockMessage}
           <div class="gt-msg">{ghostBlockMessage}</div>
         {:else if ghostRules.length > 0}
           <div class="gt-rule">
             {#each ghostRules as r}
               <div class="tip-rule {r.tone}">
-                <div class="gt-rule-label">{r.tone === 'warn' ? 'Atención' : 'Compañera'}</div>
+                <div class="gt-rule-label">{r.tone === 'warn' ? t('map_rule_caution') : t('map_rule_companion_label')}</div>
                 <div class="gt-msg">{r.message}</div>
               </div>
             {/each}
@@ -1931,7 +2022,12 @@
   {/if}
 
   {#if relPanelPlantId}
-    <RelationshipPanel plantId={relPanelPlantId} hits={relPanelHits} onClose={() => (relPanelPlantId = null)} />
+    <RelationshipPanel
+      plantId={relPanelPlantId}
+      hits={relPanelHits}
+      onClose={() => (relPanelPlantId = null)}
+      onPick={(id) => { selectSpecies(id); relPanelPlantId = null; }}
+    />
   {/if}
 
   {#if tool === 'plant' && speciesPickerVisible}
@@ -1948,9 +2044,9 @@
       type="button"
       class="picker-reopen btn btn-sm btn-accent"
       onclick={() => (speciesPickerVisible = true)}
-      aria-label="Cambiar especie"
+      aria-label={t('map_change_species')}
     >
-      <Glyph name="Seed" size={14} /> Cambiar especie
+      <Glyph name="Seed" size={14} /> {t('map_change_species')}
     </button>
   {/if}
 
@@ -1958,72 +2054,72 @@
     <div class="canvas-banner codex-card-soft" role="status" aria-live="polite">
       <div class="cb-head">
         <Glyph name="Map" size={16} />
-        <span><b>Contorno</b> · {boundaryShape ? (boundaryShape === 'free' ? 'toca el mapa para añadir vértices' : 'toca la primera esquina') : 'elige una forma'}</span>
+        <span><b>{t('map_contour_tool')}</b> · {boundaryShape ? (boundaryShape === 'free' ? t('map_tap_add_vertices') : t('map_tap_first_corner')) : t('map_choose_shape')}</span>
       </div>
       <div class="cb-shapes">
-        {#each [{v:'free',l:'Libre'},{v:'square',l:'Cuadrado'},{v:'rectangle',l:'Rectángulo'},{v:'circle',l:'Círculo'}] as opt}
+        {#each shapeOptions as opt}
           <button type="button" class="cb-shape" class:on={boundaryShape === opt.v} onclick={() => setBoundaryShape(opt.v as DrawShape)}>{opt.l}</button>
         {/each}
       </div>
       {#if boundaryShape}
         <div class="cb-actions">
-          <button class="btn btn-primary btn-sm" onclick={finishBoundary} disabled={drawingBoundary.length < 3}>Cerrar contorno</button>
-          <button class="btn btn-sm" onclick={() => { drawingBoundary = []; shapeAnchor = null; refreshDraftSources(); }}>Limpiar</button>
+          <button class="btn btn-primary btn-sm" onclick={finishBoundary} disabled={drawingBoundary.length < 3}>{t('map_close_boundary')}</button>
+          <button class="btn btn-sm" onclick={() => { drawingBoundary = []; shapeAnchor = null; refreshDraftSources(); }}>{t('map_clear_btn')}</button>
         </div>
       {:else}
-        <div class="cb-hint">Elige una forma arriba para empezar a dibujar.</div>
+        <div class="cb-hint">{t('map_choose_shape_hint')}</div>
       {/if}
     </div>
   {/if}
 
   {#if tool === 'zone'}
     <div class="canvas-banner codex-card-soft" role="status" aria-live="polite">
-      <div class="cb-head"><Glyph name="Layers" size={16} /> <span><b>Zona</b> · {zoneShape ? (zoneShape === 'free' ? 'toca el mapa para dibujar' : 'toca la primera esquina') : 'elige una forma'}</span></div>
+      <div class="cb-head"><Glyph name="Layers" size={16} /> <span><b>{t('map_zone_tool')}</b> · {zoneShape ? (zoneShape === 'free' ? t('map_tap_draw') : t('map_tap_first_corner')) : t('map_choose_shape')}</span></div>
       <div class="cb-shapes">
-        {#each [{v:'free',l:'Libre'},{v:'square',l:'Cuadrado'},{v:'rectangle',l:'Rectángulo'},{v:'circle',l:'Círculo'}] as opt}
+        {#each shapeOptions as opt}
           <button type="button" class="cb-shape" class:on={zoneShape === opt.v} onclick={() => setZoneShape(opt.v as DrawShape)}>{opt.l}</button>
         {/each}
       </div>
       {#if zoneShape}
         <div class="cb-actions">
-          <button class="btn btn-primary btn-sm" onclick={finishZone} disabled={drawingZone.length < 3}>Guardar</button>
-          <button class="btn btn-sm" onclick={() => { drawingZone = []; zoneAnchor = null; refreshDraftSources(); }}>Limpiar</button>
+          <button class="btn btn-primary btn-sm" onclick={finishZone} disabled={drawingZone.length < 3}>{t('common_save')}</button>
+          <button class="btn btn-sm" onclick={() => { drawingZone = []; zoneAnchor = null; refreshDraftSources(); }}>{t('map_clear_btn')}</button>
         </div>
       {:else}
-        <div class="cb-hint">Elige una forma arriba para empezar a dibujar.</div>
+        <div class="cb-hint">{t('map_choose_shape_hint')}</div>
       {/if}
     </div>
   {/if}
 
   {#if tool === 'water'}
     <div class="canvas-banner codex-card-soft" role="status" aria-live="polite">
-      <div class="cb-head"><Glyph name="Drop" size={16} /> <span><b>Agua</b> · {waterType ? 'dibuja en el mapa' : 'elige un tipo'}</span></div>
+      <div class="cb-head"><Glyph name="Drop" size={16} /> <span><b>{t('map_water_tool')}</b> · {waterType ? t('map_draw_on_map') : t('map_choose_water_type')}</span></div>
       <div class="cb-shapes">
-        {#each [{v:'pond',l:'Estanque'},{v:'river',l:'Río'},{v:'channel',l:'Zanja'},{v:'swale',l:'Infiltración'},{v:'well',l:'Pozo'},{v:'spring',l:'Manantial'},{v:'other',l:'Otro'}] as t}
-          <button type="button" class="cb-shape" class:on={waterType === t.v} onclick={() => { waterType = t.v as any; drawingWater = []; refreshDraftSources(); }}>{t.l}</button>
+        {#each Object.entries(waterTypeNames) as [wv, wl]}
+          <button type="button" class="cb-shape" class:on={waterType === wv} onclick={() => { waterType = wv as any; drawingWater = []; refreshDraftSources(); }}>{wl}</button>
         {/each}
       </div>
       {#if waterType}
         <div class="cb-actions">
-          <button class="btn btn-primary btn-sm" onclick={finishWater} disabled={drawingWater.length < 1}>Guardar</button>
-          <button class="btn btn-sm" onclick={() => { drawingWater = []; refreshDraftSources(); }}>Limpiar</button>
+          <button class="btn btn-primary btn-sm" onclick={finishWater} disabled={drawingWater.length < 1}>{t('common_save')}</button>
+          <button class="btn btn-sm" onclick={() => { drawingWater = []; refreshDraftSources(); }}>{t('map_clear_btn')}</button>
         </div>
       {:else}
-        <div class="cb-hint">Elige el tipo de agua para empezar a dibujar.</div>
+        <div class="cb-hint">{t('map_choose_water_hint')}</div>
       {/if}
     </div>
   {/if}
 
   {#if tool === 'edit'}
     <div class="canvas-banner codex-card-soft" role="status" aria-live="polite">
-      <div class="cb-head"><Glyph name="Map" size={16} /> <span><b>Modificar</b> · {editingId ? 'Arrastra puntos naranjas o la forma completa' : 'Toca un elemento para editarlo'}</span></div>
+      <div class="cb-head"><Glyph name="Map" size={16} /> <span><b>{t('map_edit_tool')}</b> · {editingId ? t('map_drag_points') : t('map_tap_to_edit')}</span></div>
       {#if editingId}
         <div class="cb-actions">
-          <button class="btn btn-primary btn-sm" onclick={saveEditing}>Guardar cambios</button>
+          <button class="btn btn-primary btn-sm" onclick={saveEditing}>{t('map_save_changes')}</button>
           {#if editingType !== 'boundary' && editingType !== 'plant'}
-            <button class="btn btn-sm" onclick={renameEditing}>Renombrar</button>
+            <button class="btn btn-sm" onclick={renameEditing}>{t('map_rename_btn')}</button>
           {/if}
-          <button class="btn btn-sm" onclick={() => { editingId = null; editingType = null; editingPoints = []; draggingWholeShape = false; dragStart = null; if (map) map.dragPan.enable(); removeEditMarker(); refreshEditSource(); refreshLayers(); }}>Cancelar</button>
+          <button class="btn btn-sm" onclick={() => { editingId = null; editingType = null; editingPoints = []; draggingWholeShape = false; dragStart = null; if (map) map.dragPan.enable(); removeEditMarker(); refreshEditSource(); refreshLayers(); }}>{t('common_cancel')}</button>
         </div>
       {/if}
     </div>
@@ -2031,7 +2127,7 @@
 
   {#if tool === 'erase'}
     <div class="canvas-banner codex-card-soft warn" role="status" aria-live="polite">
-      <Glyph name="Trash" size={16} /> <span><b>Borrar</b> · Toca elementos en el mapa.</span>
+      <Glyph name="Trash" size={16} /> <span><b>{t('map_delete_tool')}</b> · {t('map_tap_to_delete')}</span>
     </div>
   {/if}
 </div>
@@ -2046,72 +2142,22 @@
   .lienzo.transitioning { opacity: 0.3; }
   .lienzo-map { position: absolute; inset: 0; }
 
-  /* ── Map Actions (bottom-right) ── */
-  .map-actions {
-    position: absolute;
-    bottom: 14px;
-    right: 14px;
-    z-index: 11;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    align-items: flex-end;
-  }
-  .basemap-switcher {
-    display: flex;
-    flex-direction: column;
-    background: var(--paper);
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    padding: 4px;
-    gap: 4px;
-  }
-  .bm-btn {
-    padding: 6px 10px;
-    background: transparent;
-    color: var(--ink-soft);
-    border: none;
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.15s var(--ease-codex);
-  }
-  .bm-btn:hover { background: var(--paper-warm); }
-  .bm-btn.on { background: var(--ink); color: var(--paper); }
-  .map-act {
-    padding: 6px 10px;
-    background: var(--paper);
-    border: 1px solid var(--line-strong);
-    border-radius: 6px;
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--ink);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    white-space: nowrap;
-  }
-  .map-act:hover { background: var(--paper-warm); }
+  /* (Removed dead .map-actions / .basemap-switcher / .map-act / .bm-btn styles —
+     basemap + map actions now live in the CodexTopBar.) */
 
   /* ── Canvas Drawing Banner (above bottom nav bar) ── */
   .canvas-banner {
     position: absolute;
     bottom: 80px;
     left: 80px;
-    z-index: 13;
+    z-index: var(--z-canvas-tip);
     padding: 12px 14px;
     width: min(480px, calc(100% - 96px));
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
-  .cb-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .cb-head { display: flex; align-items: center; gap: 8px; font-size: calc(13px * var(--text-scale)); }
   .cb-shapes {
     display: flex;
     flex-wrap: wrap;
@@ -2123,7 +2169,7 @@
     background: var(--paper);
     color: var(--ink);
     font-family: var(--sans);
-    font-size: 11px;
+    font-size: calc(11px * var(--text-scale));
     border-radius: 6px;
     cursor: pointer;
     transition: all 0.15s var(--ease-codex);
@@ -2131,17 +2177,21 @@
   .cb-shape:hover { background: var(--paper-warm); border-color: var(--ink-soft); }
   .cb-shape.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
   .cb-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-  .cb-hint { font-size: 11px; font-style: italic; opacity: 0.7; font-family: var(--serif); }
+  .cb-hint { font-size: calc(11px * var(--text-scale)); font-style: italic; opacity: 0.7; font-family: var(--serif); font-weight: var(--display-weight); }
 
   @media (max-width: 900px) {
     .canvas-banner { left: 14px; width: calc(100% - 100px); }
   }
   @media (max-width: 760px) {
-    .canvas-banner { bottom: 140px; left: 8px; padding: 10px 12px; width: calc(100% - 16px); max-width: none; }
-    .cb-head { font-size: 12px; }
-    .map-actions { bottom: 140px; right: 8px; }
-    .map-act { padding: 5px 8px; font-size: 9px; }
-    .bm-btn { padding: 4px 7px; font-size: 9px; }
+    /* Stack above the tool rail, which itself sits above the nav + safe area */
+    .canvas-banner {
+      bottom: calc(var(--nav-h) + var(--safe-bottom) + 72px);
+      left: calc(8px + var(--safe-left));
+      padding: 10px 12px;
+      width: calc(100% - 16px - var(--safe-left) - var(--safe-right));
+      max-width: none;
+    }
+    .cb-head { font-size: calc(12px * var(--text-scale)); }
   }
   @media (max-width: 420px) {
     .plant-tip, .zone-tip, .ghost-tip { max-width: 240px; }
@@ -2165,7 +2215,7 @@
     border-color: #3B82F6;
     border-width: 2.5px;
     animation: editPulse 1.5s ease-in-out infinite;
-    z-index: 20;
+    z-index: var(--z-popover);
   }
   @keyframes editPulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
@@ -2174,7 +2224,7 @@
 
   .plant-tip {
     position: absolute;
-    z-index: 13;
+    z-index: var(--z-canvas-tip);
     padding: 12px 14px;
     max-width: 280px;
     pointer-events: none;
@@ -2184,23 +2234,23 @@
   .tip-head { display: flex; gap: 10px; align-items: center; }
   .tip-glyph { color: var(--tone, var(--ocre)); display: inline-flex; }
   .tip-text { display: flex; flex-direction: column; gap: 2px; }
-  .tip-name { font-family: var(--serif); font-size: 18px; line-height: 1.1; color: var(--ink); }
-  .tip-latin { font-family: var(--serif); font-style: italic; font-size: 12px; color: var(--ink-soft); }
+  .tip-name { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(18px * var(--text-scale)); line-height: 1.1; color: var(--ink); }
+  .tip-latin { font-family: var(--serif); font-weight: var(--display-weight); font-style: italic; font-size: calc(12px * var(--text-scale)); color: var(--ink-soft); }
   .tip-meta { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
   .tip-rules { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
   .tip-rule .tip-rule-label {
     font-family: var(--mono);
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--jade-deep);
   }
   .tip-rule.warn .tip-rule-label { color: var(--cinabrio); }
-  .tip-rule-msg { font-family: var(--serif); font-size: 13px; line-height: 1.4; margin-top: 2px; color: var(--ink); }
+  .tip-rule-msg { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(13px * var(--text-scale)); line-height: 1.4; margin-top: 2px; color: var(--ink); }
 
   .zone-tip {
     position: absolute;
-    z-index: 13;
+    z-index: var(--z-canvas-tip);
     padding: 12px 14px;
     max-width: 280px;
     pointer-events: none;
@@ -2212,19 +2262,19 @@
     background: var(--tone, var(--ocre));
     color: var(--paper);
     font-family: var(--mono);
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     letter-spacing: 0.14em;
     text-transform: uppercase;
     padding: 2px 8px;
     border-radius: 999px;
   }
-  .zt-name { font-family: var(--serif); font-size: 18px; line-height: 1.1; color: var(--ink); }
-  .zt-intent { font-family: var(--serif); font-style: italic; font-size: 13px; margin-top: 6px; color: var(--ink-soft); }
-  .zt-notes { font-size: 12px; margin-top: 6px; color: var(--ink-soft); line-height: 1.4; }
+  .zt-name { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(18px * var(--text-scale)); line-height: 1.1; color: var(--ink); }
+  .zt-intent { font-family: var(--serif); font-weight: var(--display-weight); font-style: italic; font-size: calc(13px * var(--text-scale)); margin-top: 6px; color: var(--ink-soft); }
+  .zt-notes { font-size: calc(12px * var(--text-scale)); margin-top: 6px; color: var(--ink-soft); line-height: 1.4; }
 
   .ghost-tip {
     position: absolute;
-    z-index: 14;
+    z-index: var(--z-canvas-tip);
     padding: 10px 12px;
     max-width: 260px;
     pointer-events: none;
@@ -2233,34 +2283,43 @@
   }
   .gt-label {
     font-family: var(--mono);
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--tone, var(--jade-deep));
   }
-  .gt-msg { font-family: var(--serif); font-size: 13px; margin-top: 4px; color: var(--ink); }
+  .gt-score {
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    color: var(--jade-deep);
+    font-weight: 700;
+  }
+  .gt-msg { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(13px * var(--text-scale)); margin-top: 4px; color: var(--ink); }
   .gt-rule { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
   .gt-rule .gt-rule-label {
     font-family: var(--mono);
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--jade-deep);
   }
   .gt-rule.warn .gt-rule-label { color: var(--cinabrio); }
-  .gt-rule-msg { font-family: var(--serif); font-size: 13px; line-height: 1.4; margin-top: 2px; color: var(--ink); }
+  .gt-rule-msg { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(13px * var(--text-scale)); line-height: 1.4; margin-top: 2px; color: var(--ink); }
 
   .picker-reopen {
     position: absolute;
     bottom: 92px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 11;
+    z-index: var(--z-canvas-rail);
     display: inline-flex;
     align-items: center;
     gap: 6px;
   }
   @media (max-width: 760px) {
-    .picker-reopen { bottom: 152px; }
+    .picker-reopen { bottom: calc(var(--nav-h) + var(--safe-bottom) + 84px); }
   }
 </style>

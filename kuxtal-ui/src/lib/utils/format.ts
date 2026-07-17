@@ -1,3 +1,5 @@
+import { localeTag } from './dates';
+
 /**
  * Round a number to N decimals, eliminating floating-point trailing-9s artifacts.
  * `round(0.4 + 0.2)` returns `0.6` instead of `0.6000000000000001`.
@@ -20,10 +22,10 @@ export function formatMetersSq(n: number | null | undefined, decimals = 0): stri
   return `${round(n, decimals).toFixed(decimals)} m²`;
 }
 
-/** "1,234 m" — for large distances with thousands separator. */
+/** "1,234 m" — for large distances with a locale-aware thousands separator. */
 export function formatMetersHuman(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return '—';
-  if (n >= 100) return `${Math.round(n).toLocaleString('es-CO')} m`;
+  if (n >= 100) return `${Math.round(n).toLocaleString(localeTag())} m`;
   if (n >= 10) return `${round(n, 1).toFixed(1)} m`;
   return `${round(n, 1).toFixed(1)} m`;
 }

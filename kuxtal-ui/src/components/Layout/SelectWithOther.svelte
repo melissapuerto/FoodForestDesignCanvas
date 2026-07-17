@@ -5,14 +5,15 @@
    * final string the parent stores (preset id OR free-text).
    */
   import { untrack } from 'svelte';
+  import { t } from '../../lib/i18n/index.svelte';
 
   let {
     value = $bindable<string>(''),
     options,
     label,
     id,
-    placeholder = 'Escribe el valor',
-    otherLabel = 'Otro…',
+    placeholder,
+    otherLabel,
     allowEmpty = false,
     hideOther = false,
     width = 'auto',
@@ -76,7 +77,7 @@
       {#each options as o}
         <option value={o.v}>{o.l}</option>
       {/each}
-      {#if !hideOther}<option value={OTHER}>{otherLabel}</option>{/if}
+      {#if !hideOther}<option value={OTHER}>{otherLabel ?? t('select_other_label')}</option>{/if}
     </select>
     {#if isOther}
       <input
@@ -84,8 +85,8 @@
         class="inp swo-other"
         bind:value={custom}
         oninput={onCustomInput}
-        placeholder={placeholder}
-        aria-label={`${label ?? 'Valor'} personalizado`}
+        placeholder={placeholder ?? t('select_write_value')}
+        aria-label={`${label ?? t('select_custom_aria')}`}
       />
     {/if}
   </div>
@@ -95,7 +96,7 @@
   .swo { display: flex; flex-direction: column; gap: 6px; }
   .swo-label {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--ink-soft);

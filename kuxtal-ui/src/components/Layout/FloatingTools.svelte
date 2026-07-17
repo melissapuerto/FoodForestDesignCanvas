@@ -1,6 +1,18 @@
 <script lang="ts">
   import Glyph from '../../lib/glyphs/Glyph.svelte'
   import type { GlyphName } from '../../lib/glyphs/glyph-data'
+  import { t as tr } from '../../lib/i18n/index.svelte'
+  import { undo, redo, canUndo, canRedo } from '../../lib/stores/history'
+
+  // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y = redo. Ignored while typing.
+  function onKeyDown(e: KeyboardEvent): void {
+    const el = e.target as HTMLElement | null
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+    if (!(e.ctrlKey || e.metaKey)) return
+    const key = e.key.toLowerCase()
+    if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
+    else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo() }
+  }
 
   export type ToolId =
     | 'pan'
@@ -16,58 +28,74 @@
     setTool
   }: {
     tool: ToolId
-    setTool: (t: ToolId) => void
+    setTool: (id: ToolId) => void
   } = $props()
 
-  const tools: Array<{
-    id: ToolId
-    label: string
-    hint: string
-    icon: GlyphName
-  }> = [
-    { id: 'pan', label: 'Navegar', hint: 'V', icon: 'Compass' },
-    { id: 'plant', label: 'Plantar', hint: 'P', icon: 'Plus' },
-    { id: 'zone', label: 'Zona', hint: 'Z', icon: 'Layers' },
-    { id: 'boundary', label: 'Contorno', hint: 'B', icon: 'Map' },
-    { id: 'water', label: 'Agua', hint: 'W', icon: 'Drop' },
-    { id: 'edit', label: 'Modificar', hint: 'M', icon: 'Map' },
-    { id: 'erase', label: 'Borrar', hint: 'X', icon: 'Trash' }
-  ]
+  const tools = $derived<Array<{ id: ToolId; label: string; hint: string; icon: GlyphName }>>([
+    { id: 'pan',      label: tr('tool_navigate'), hint: 'V', icon: 'Compass' },
+    { id: 'plant',    label: tr('tool_plant'),    hint: 'P', icon: 'Plus'    },
+    { id: 'zone',     label: tr('tool_zone'),     hint: 'Z', icon: 'Layers'  },
+    { id: 'boundary', label: tr('tool_boundary'), hint: 'B', icon: 'Map'     },
+    { id: 'water',    label: tr('tool_water'),    hint: 'W', icon: 'Drop'    },
+    { id: 'edit',     label: tr('tool_edit'),     hint: 'M', icon: 'Map'     },
+    { id: 'erase',    label: tr('tool_delete'),   hint: 'X', icon: 'Trash'   }
+  ])
 </script>
+
+<svelte:window onkeydown={onKeyDown} />
 
 <aside
   class="tools-rail codex-card"
-  aria-label="Herramientas del lienzo"
+  aria-label={tr('tools_aria')}
+  data-tour="tools"
 >
-  {#each tools as t}
+  {#each tools as tool_item}
     <button
       type="button"
       class="tool-btn"
-      class:on={tool === t.id}
-      aria-pressed={tool === t.id}
-      aria-label={`${t.label} (${t.hint})`}
-      title={`${t.label} · ${t.hint}`}
-      onclick={() => setTool(t.id)}
+      class:on={tool === tool_item.id}
+      aria-pressed={tool === tool_item.id}
+      aria-label={tool_item.label}
+      title={tool_item.label}
+      onclick={() => setTool(tool_item.id)}
     >
-      <span class="tool-ico"
-        ><Glyph
-          name={t.icon}
-          size={18}
-        /></span
-      >
-      <span class="tool-lbl">{t.label}</span>
-      <span class="tool-hint coord">{t.hint}</span>
+      <span class="tool-ico"><Glyph name={tool_item.icon} size={18} /></span>
+      <span class="tool-lbl">{tool_item.label}</span>
+      <span class="tool-hint coord" aria-hidden="true">{tool_item.hint}</span>
     </button>
   {/each}
+  <div class="tool-sep" aria-hidden="true"></div>
+  <button
+    type="button"
+    class="tool-btn"
+    disabled={!$canUndo}
+    aria-label={tr('tool_undo')}
+    title={`${tr('tool_undo')} · Ctrl+Z`}
+    onclick={undo}
+  >
+    <span class="tool-ico"><Glyph name="Reset" size={18} /></span>
+    <span class="tool-lbl">{tr('tool_undo')}</span>
+  </button>
+  <button
+    type="button"
+    class="tool-btn"
+    disabled={!$canRedo}
+    aria-label={tr('tool_redo')}
+    title={`${tr('tool_redo')} · Ctrl+Y`}
+    onclick={redo}
+  >
+    <span class="tool-ico" style="transform: scaleX(-1);"><Glyph name="Reset" size={18} /></span>
+    <span class="tool-lbl">{tr('tool_redo')}</span>
+  </button>
 </aside>
 
 <style>
   .tools-rail {
     position: absolute;
-    left: 14px;
+    left: calc(14px + var(--safe-left));
     top: 50%;
     transform: translateY(-50%);
-    z-index: 11;
+    z-index: var(--z-canvas-rail);
     padding: 6px;
     display: flex;
     flex-direction: column;
@@ -86,7 +114,7 @@
     cursor: pointer;
     width: 60px;
     font-family: var(--sans);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     transition: all 0.15s var(--ease-codex);
   }
   .tool-btn:hover {
@@ -99,6 +127,9 @@
   .tool-btn.on .tool-hint {
     color: var(--maiz);
   }
+  .tool-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .tool-btn:disabled:hover { background: transparent; }
+  .tool-sep { height: 1px; background: var(--line); margin: 4px 6px; flex-shrink: 0; }
   .tool-ico {
     width: 22px;
     height: 22px;
@@ -107,23 +138,27 @@
     justify-content: center;
   }
   .tool-hint {
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
     opacity: 0.7;
   }
   @media (max-width: 760px) {
     .tools-rail {
       left: 50%;
       top: auto;
-      bottom: 90px;
+      /* Sit just above the floating bottom nav + home indicator */
+      bottom: calc(var(--nav-h) + var(--safe-bottom) + 12px);
       transform: translateX(-50%);
       flex-direction: row;
-      max-width: calc(100vw - 16px);
+      max-width: calc(100vw - 16px - var(--safe-left) - var(--safe-right));
       overflow-x: auto;
+      overscroll-behavior-x: contain;
     }
     .tool-btn {
       width: 56px;
       padding: 6px;
-      font-size: 9px;
+      font-size: calc(9px * var(--text-scale));
+      min-height: 44px;
+      justify-content: center;
     }
     .tool-ico {
       width: 18px;

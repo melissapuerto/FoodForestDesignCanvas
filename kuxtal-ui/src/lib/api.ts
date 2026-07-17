@@ -1,4 +1,5 @@
 import { writable, get } from 'svelte/store';
+import { t } from './i18n/index.svelte';
 
 export type Role = 'user' | 'mod' | 'admin';
 
@@ -18,15 +19,19 @@ export type AuthUser = {
   };
 };
 
-export const authToken = writable<string | null>(localStorage.getItem('kuxtal_auth_token') || null);
+export const authToken = writable<string | null>(
+  (() => { try { return localStorage.getItem('kuxtal_auth_token') || null; } catch { return null; } })()
+);
 export const authUser = writable<AuthUser | null>(null);
 
 authToken.subscribe(token => {
-  if (token) {
-    localStorage.setItem('kuxtal_auth_token', token);
-  } else {
-    localStorage.removeItem('kuxtal_auth_token');
-  }
+  try {
+    if (token) {
+      localStorage.setItem('kuxtal_auth_token', token);
+    } else {
+      localStorage.removeItem('kuxtal_auth_token');
+    }
+  } catch {}
 });
 
 const RAW_API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
@@ -57,7 +62,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}): Pro
     // throws a TypeError without a usable status. Surface it explicitly.
     // eslint-disable-next-line no-console
     console.error('[kuxtal] network error', endpoint, e);
-    throw new Error(`No se pudo conectar al servidor (${API_URL}). ${e?.message ?? ''}`);
+    throw new Error(t('api_network_err', { url: API_URL, msg: e?.message ?? '' }));
   }
 
   if (res.status === 401) {

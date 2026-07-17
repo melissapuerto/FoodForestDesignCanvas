@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+  import { formatDate as formatDateLocale } from '../../lib/utils/dates';
   import { onMount } from 'svelte';
   import { loadPlan, clearPlan, materializeFromPlan } from '../../lib/permaculture/realize';
   import { suggestPlan } from '../../lib/permaculture/engine';
@@ -8,12 +10,13 @@
   import { showToast } from '../../lib/stores/toast';
   import Glyph from '../../lib/glyphs/Glyph.svelte';
   import { formatMeters } from '../../lib/utils/format';
+  import { t } from '../../lib/i18n/index.svelte';
 
   let { onEdit }: { onEdit?: () => void } = $props();
 
   let plan = $state<Plan | null>(null);
 
-  dbReady.subscribe((ready) => { if (ready) refresh(); });
+  $effect(() => { if ($dbReady) untrack(refresh); });
   onMount(() => refresh());
 
   function refresh(): void {
@@ -23,7 +26,7 @@
   function recompute(): void {
     if (!plan) return;
     plan = suggestPlan(plan.inputs);
-    showToast({ message: 'Plan recalculado.', tone: 'ok' });
+    showToast({ message: t('plan_recalculated'), tone: 'ok' });
   }
 
   async function generateZones(): Promise<void> {
@@ -31,74 +34,81 @@
     const lat = plan.inputs.lat;
     const lng = plan.inputs.lng;
     if (lat == null || lng == null) {
-      showToast({ message: 'Necesito coordenadas para generar zonas. Edita tus datos en el wizard.', tone: 'warn' });
+      showToast({ message: t('plan_need_coords'), tone: 'warn' });
       return;
     }
     const ok = await dialogConfirm({
-      title: '¿Generar contorno y zonas en el lienzo?',
-      body: 'Se crearán polígonos circulares concéntricos. Podrás moverlos o borrarlos después.',
-      confirmLabel: 'Generar'
+      title: t('plan_gen_title'),
+      body: t('plan_gen_body'),
+      confirmLabel: t('plan_gen_btn')
     });
     if (!ok) return;
     const r = materializeFromPlan({
       plan, landId: 'land-default',
       centerLat: lat, centerLng: lng,
-      createBoundary: true, createZones: true
+      createBoundary: true,
+      createZones: true,
+      createPlants: true
     });
     reloadFromDb('land-default');
     showToast({
-      message: `Plan dibujado: ${r.boundaryCreated ? 'contorno + ' : ''}${r.zonesCreated} zonas.`,
+      message: t('plan_drawn', { boundary: r.boundaryCreated ? t('plan_drawn_boundary') : '', zones: String(r.zonesCreated) }),
       tone: 'ok'
     });
   }
 
   async function discard(): Promise<void> {
     const ok = await dialogConfirm({
-      title: '¿Borrar el plan guardado?',
-      body: 'No se borrarán las zonas ya creadas en el lienzo.',
-      confirmLabel: 'Borrar plan',
+      title: t('plan_delete_title'),
+      body: t('plan_delete_body'),
+      confirmLabel: t('plan_delete_btn'),
       danger: true
     });
     if (!ok) return;
     clearPlan();
     plan = null;
-    showToast({ message: 'Plan borrado.', tone: 'ok' });
+    showToast({ message: t('plan_deleted'), tone: 'ok' });
   }
 
   function formatDate(iso: string): string {
-    try { return new Date(iso).toLocaleDateString('es-CO'); } catch { return iso; }
+    try { return formatDateLocale(iso); } catch { return iso; }
   }
 </script>
 
 <section class="card">
   <div class="row" style="justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;">
     <div>
-      <div class="label">Mi plan</div>
+      <div class="label">{t('plan_my_plan')}</div>
       <p class="sub" style="margin-top: 6px;">
-        Bosque comestible sugerido por Kuxtal a partir de tu onboarding.
+        {t('plan_kuxtal_suggestion')}
       </p>
     </div>
     {#if plan}
-      <span class="coord">generado {formatDate(plan.generatedAt)}</span>
+      <span class="coord">{t('plan_generated_label')} {formatDate(plan.generatedAt)}</span>
     {/if}
   </div>
 
   {#if !plan}
     <div class="empty" style="margin-top: 10px;">
-      <div>Aún no tienes un plan guardado.</div>
-      <p class="sub" style="margin-top: 6px;">Ejecuta el wizard de bienvenida para generar uno.</p>
+      <div>{t('plan_no_plan')}</div>
+      <p class="sub" style="margin-top: 6px;">{t('plan_run_wizard')}</p>
+      {#if onEdit}
+        <button class="btn btn-primary" style="margin-top: 12px;" onclick={onEdit}>
+          <Glyph name="Sparkle" size={14} /> {t('plan_create_btn')}
+        </button>
+      {/if}
     </div>
   {:else}
     <div class="weave" style="margin: 10px 0;" aria-hidden="true"></div>
     <div class="row" style="gap: 18px; flex-wrap: wrap;">
-      <div><div style="font-family: var(--serif); font-size: 22px;">{plan.totalAreaM2.toFixed(0)}</div><div class="coord">m²</div></div>
-      <div><div style="font-family: var(--serif); font-size: 22px;">{plan.zones.length}</div><div class="coord">zonas</div></div>
-      <div><div style="font-family: var(--serif); font-size: 22px;">{plan.strata.length}</div><div class="coord">estratos</div></div>
-      <div><div style="font-family: var(--serif); font-size: 18px;">{plan.inputs.climate}</div><div class="coord">clima</div></div>
+      <div><div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(22px * var(--text-scale));">{plan.totalAreaM2.toFixed(0)}</div><div class="coord">m²</div></div>
+      <div><div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(22px * var(--text-scale));">{plan.zones.length}</div><div class="coord">{t('plan_zones_label')}</div></div>
+      <div><div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(22px * var(--text-scale));">{plan.strata.length}</div><div class="coord">{t('plan_strata_label')}</div></div>
+      <div><div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(18px * var(--text-scale));">{plan.inputs.climate}</div><div class="coord">{t('plan_climate_label')}</div></div>
     </div>
 
     <div class="weave" style="margin: 14px 0;" aria-hidden="true"></div>
-    <div class="label">Zonas</div>
+    <div class="label">{t('plan_zones_label')}</div>
     <ol class="plan-zones">
       {#each plan.zones as z}
         <li>
@@ -110,11 +120,11 @@
     </ol>
 
     <div class="weave" style="margin: 14px 0;" aria-hidden="true"></div>
-    <div class="label">Estratos</div>
+    <div class="label">{t('plan_strata_label')}</div>
     <ul class="plan-strata">
       {#each plan.strata as s}
         <li>
-          <div style="font-family: var(--serif); font-size: 15px;">{s.name}</div>
+          <div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(15px * var(--text-scale));">{s.name}</div>
           <div class="tag-row" style="margin-top: 4px;">
             {#each s.speciesIds as id}<span class="chip chip-jade">{id}</span>{/each}
           </div>
@@ -132,17 +142,17 @@
     <div class="row wrap" style="margin-top: 14px; gap: 8px;">
       {#if onEdit}
         <button class="btn btn-accent" onclick={onEdit}>
-          <Glyph name="Settings" size={14} /> Editar mis respuestas
+          <Glyph name="Settings" size={14} /> {t('plan_edit_answers')}
         </button>
       {/if}
       <button class="btn btn-primary" onclick={generateZones}>
-        <Glyph name="Layers" size={14} /> Generar zonas en el lienzo
+        <Glyph name="Layers" size={14} /> {t('plan_gen_zones_canvas')}
       </button>
       <button class="btn" onclick={recompute}>
-        <Glyph name="Reset" size={14} /> Recalcular
+        <Glyph name="Reset" size={14} /> {t('plan_recompute')}
       </button>
       <button class="btn btn-danger" onclick={discard}>
-        <Glyph name="Trash" size={14} /> Borrar plan
+        <Glyph name="Trash" size={14} /> {t('plan_delete_btn')}
       </button>
     </div>
   {/if}
@@ -154,8 +164,8 @@
     display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
     padding: 8px 10px; background: var(--paper-warm); border: 1px solid var(--line); border-radius: 4px;
   }
-  .z-tag { background: var(--ocre); color: var(--paper); font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; }
-  .z-name { font-family: var(--serif); font-size: 16px; flex: 1; }
+  .z-tag { background: var(--ocre); color: var(--paper); font-family: var(--mono); font-size: calc(10px * var(--text-scale)); letter-spacing: 0.1em; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; }
+  .z-name { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(16px * var(--text-scale)); flex: 1; }
   .plan-strata { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .plan-strata li { padding: 8px 10px; background: var(--paper-warm); border: 1px solid var(--line); border-radius: 4px; }
 </style>

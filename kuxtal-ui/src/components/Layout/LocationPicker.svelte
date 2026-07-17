@@ -6,25 +6,37 @@
   import { metersToDegLat, metersToDegLng } from '../../lib/map/geometry';
   import { showToast } from '../../lib/stores/toast';
   import { formatMeters } from '../../lib/utils/format';
+  import { t } from '../../lib/i18n/index.svelte';
 
   let {
     lat = $bindable<string>(),
     lng = $bindable<string>(),
     radiusM = 0,
     height = '320px',
-    label = 'Toca o arrastra para elegir el centro de tu finca'
+    label = t('lp_pick_label'),
+    onUserMove
   }: {
     lat: string;
     lng: string;
     radiusM?: number;
     height?: string;
     label?: string;
+    /** Fired when the USER moves the point (pin drag, map tap, GPS) — lets the
+     *  parent refresh the human-readable address to match the new geopoint. */
+    onUserMove?: (c: { lat: number; lng: number }) => void;
   } = $props();
 
   let mapEl: HTMLDivElement | undefined = $state();
   let map: MlMap | null = null;
   let marker: maplibregl.Marker | null = null;
+  let resizeObserver: ResizeObserver | null = null;
   let busy = $state(false);
+  // Coordinates last set from inside the map (click/drag/GPS). When the bound
+  // lat/lng differ from this, the change came from outside (search result,
+  // typed coordinates) and the camera must travel to it — the tester's bug #1
+  // was a marker silently placed off-screen while the map stayed put.
+  let lastInternal = '';
+  let lastFitRadius = -1;
 
   const PAPER_STYLE: any = {
     version: 8,
@@ -79,13 +91,40 @@
       marker = new maplibregl.Marker({ element: makeMarkerEl(), draggable: true, anchor: 'bottom' });
       marker.on('dragend', () => {
         const c = marker!.getLngLat();
-        lat = c.lat.toFixed(6);
-        lng = c.lng.toFixed(6);
-        updateRing();
+        setInternal(c.lat, c.lng);
       });
     }
     marker.setLngLat([ln, la]).addTo(map);
     updateRing();
+  }
+
+  /** A user-made move (drag/tap/GPS): update the binding, tell the parent. */
+  function setInternal(la: number, ln: number): void {
+    const laS = la.toFixed(6);
+    const lnS = ln.toFixed(6);
+    lastInternal = `${laS},${lnS}`;
+    lat = laS;
+    lng = lnS;
+    updateRing();
+    onUserMove?.({ lat: la, lng: ln });
+  }
+
+  /** Bounds of the area ring (or a small box around the point when no ring). */
+  function pointBounds(la: number, ln: number, m: number): maplibregl.LngLatBoundsLike {
+    const r = Math.max(m, 30);
+    const dLat = metersToDegLat(r);
+    const dLng = metersToDegLng(r, la);
+    return [[ln - dLng, la - dLat], [ln + dLng, la + dLat]];
+  }
+
+  /** Travel to the point: fit the area ring when there is one, else fly in. */
+  function travelTo(la: number, ln: number): void {
+    if (!map) return;
+    if (radiusM > 0) {
+      map.fitBounds(pointBounds(la, ln, radiusM), { padding: 40, duration: 500, maxZoom: 18 });
+    } else {
+      map.flyTo({ center: [ln, la], zoom: Math.max(map.getZoom(), 15), duration: 600 });
+    }
   }
 
   function ringFeature(la: number, ln: number, m: number): GeoJSON.Feature {
@@ -119,28 +158,41 @@
     void lng;
     if (!map) return;
     const ll = parseLngLat();
-    if (ll) placeMarker(ll.lat, ll.lng);
-    else marker?.remove();
+    if (!ll) {
+      marker?.remove();
+      updateRing();
+      return;
+    }
+    placeMarker(ll.lat, ll.lng);
     updateRing();
+    const key = `${lat},${lng}`;
+    if (key !== lastInternal) {
+      // External change (search pick, typed coordinates): bring it on screen.
+      lastInternal = key;
+      travelTo(ll.lat, ll.lng);
+      lastFitRadius = radiusM;
+    } else if (radiusM > 0 && radiusM !== lastFitRadius) {
+      // Same point, new area (the size step): keep the whole ring in view.
+      lastFitRadius = radiusM;
+      map.fitBounds(pointBounds(ll.lat, ll.lng, radiusM), { padding: 40, duration: 300, maxZoom: 18 });
+    }
   });
 
   function onPick(e: maplibregl.MapMouseEvent): void {
-    lat = e.lngLat.lat.toFixed(6);
-    lng = e.lngLat.lng.toFixed(6);
+    setInternal(e.lngLat.lat, e.lngLat.lng);
     placeMarker(e.lngLat.lat, e.lngLat.lng);
   }
 
   async function useGps(): Promise<void> {
     if (!navigator.geolocation) {
-      showToast({ message: 'Tu navegador no soporta geolocalización.', tone: 'warn' });
+      showToast({ message: t('nb_geo_unavailable'), tone: 'warn' });
       return;
     }
     busy = true;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         busy = false;
-        lat = pos.coords.latitude.toFixed(6);
-        lng = pos.coords.longitude.toFixed(6);
+        setInternal(pos.coords.latitude, pos.coords.longitude);
         if (map) {
           map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 17, duration: 600 });
           placeMarker(pos.coords.latitude, pos.coords.longitude);
@@ -149,10 +201,10 @@
       (err) => {
         busy = false;
         const msg = err.code === err.PERMISSION_DENIED
-          ? 'Permiso de ubicación denegado.'
+          ? t('geo_denied')
           : err.code === err.POSITION_UNAVAILABLE
-            ? 'Ubicación no disponible. Revisa tu GPS.'
-            : 'No pude obtener tu ubicación.';
+            ? t('geo_gps_unavailable')
+            : t('geo_failed_generic');
         showToast({ message: msg, tone: 'warn' });
       },
       { enableHighAccuracy: true, timeout: 8000 }
@@ -170,6 +222,10 @@
   onMount(() => {
     if (!mapEl) return;
     const initial = parseLngLat();
+    // The mount position already honors the bound point; mark it as seen so the
+    // first effect pass doesn't animate. The ring branch still runs and fits
+    // the area circle when this picker opens with a radius (wizard size step).
+    if (initial) lastInternal = `${lat},${lng}`;
     map = new maplibregl.Map({
       container: mapEl,
       style: PAPER_STYLE,
@@ -200,9 +256,18 @@
       updateRing();
     });
     map.on('click', onPick);
+
+    // The map may be measured before its container has its final size (it is
+    // mounted inside a dialog that is still animating open), which leaves the
+    // tiles drawn into a corner of the frame. Re-measure whenever the frame
+    // actually changes size.
+    resizeObserver = new ResizeObserver(() => map?.resize());
+    resizeObserver.observe(mapEl);
   });
 
   onDestroy(() => {
+    resizeObserver?.disconnect();
+    resizeObserver = null;
     map?.remove();
     map = null;
     marker = null;
@@ -214,11 +279,11 @@
   <div class="lp-frame codex-card-soft" style="height: {height};">
     <div class="lp-map" bind:this={mapEl} aria-describedby="lp-help" role="application"></div>
     <div class="lp-actions">
-      <button type="button" class="lp-btn" onclick={useGps} disabled={busy} aria-label="Usar mi ubicación GPS">
-        <Glyph name="Pin" size={14} /> {busy ? 'Buscando...' : 'Usar mi GPS'}
+      <button type="button" class="lp-btn" onclick={useGps} disabled={busy} aria-label={t('a11y_lp_use_gps')}>
+        <Glyph name="Pin" size={14} /> {busy ? t('a11y_lp_searching') : t('a11y_lp_use_gps_short')}
       </button>
       {#if lat && lng}
-        <button type="button" class="lp-btn lp-btn-danger" onclick={clearLocation} aria-label="Borrar ubicación">
+        <button type="button" class="lp-btn lp-btn-danger" onclick={clearLocation} aria-label={t('a11y_lp_clear_location')}>
           <Glyph name="Close" size={12} />
         </button>
       {/if}
@@ -228,10 +293,10 @@
     {#if lat && lng}
       <span class="coord">lat {parseFloat(lat).toFixed(4)}° · lng {parseFloat(lng).toFixed(4)}°</span>
       {#if radiusM > 0}
-        <span class="coord"> · radio ~{formatMeters(radiusM, 0)}</span>
+        <span class="coord"> · {t('lp_radius', { r: formatMeters(radiusM, 0) })}</span>
       {/if}
     {:else}
-      <span class="coord">Aún no has marcado un punto.</span>
+      <span class="coord">{t('lp_no_point')}</span>
     {/if}
   </div>
 </div>
@@ -240,7 +305,7 @@
   .lp { display: flex; flex-direction: column; gap: 8px; }
   .lp-label {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--ink-soft);
@@ -269,7 +334,7 @@
     padding: 6px 10px;
     border-radius: 4px;
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     letter-spacing: 0.1em;
     text-transform: uppercase;
     cursor: pointer;

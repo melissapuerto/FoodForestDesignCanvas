@@ -1,0 +1,30 @@
+# Quality gates that used to be documented-but-unenforced (MAINTENANCE.md):
+# typecheck, tests, build, and the first-paint bundle budget. Deploys are
+# handled by Vercel/Render on push; this is the gate that runs first.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (svelte-check, zero warnings)
+        run: npm run check
+      - name: Lint (complexity + size guardrails)
+        run: npm run lint
+      - name: Unit + a11y tests
+        run: npm test
+      - name: Build
+        run: npx vite build
+      - name: Bundle budget (first-paint ≤ 100 KB gz)
+        run: npm run budget

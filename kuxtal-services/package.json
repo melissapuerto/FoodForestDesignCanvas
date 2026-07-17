@@ -1,6 +1,7 @@
 {
   "name": "kuxtal-backend",
   "version": "1.0.0",
+  "license": "AGPL-3.0-only",
   "description": "Kuxtal Permaculture Backend API — TypeScript + Prisma",
   "main": "dist/index.js",
   "scripts": {

@@ -1,4 +1,39 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="32" fill="#3B2F1E"/>
-  <text x="50%" y="58%" text-anchor="middle" font-family="Georgia, serif" font-size="120" fill="#D4E8C2">K</text>
+  <!-- Parchment background -->
+  <rect width="192" height="192" rx="28" fill="#3B2410"/>
+  <!-- Outer cartouche border -->
+  <rect x="8" y="8" width="176" height="176" rx="22" fill="none" stroke="#C8903A" stroke-width="3" opacity="0.9"/>
+  <!-- Inner cartouche border -->
+  <rect x="16" y="16" width="160" height="160" rx="16" fill="#4A2E14" opacity="0.7"/>
+  <!-- Corner glyph spirals (top-left) -->
+  <rect x="18" y="18" width="28" height="28" rx="3" fill="none" stroke="#C8903A" stroke-width="1.5" opacity="0.7"/>
+  <circle cx="32" cy="32" r="6" fill="none" stroke="#C8903A" stroke-width="1" opacity="0.6"/>
+  <!-- Corner glyph spirals (top-right) -->
+  <rect x="146" y="18" width="28" height="28" rx="3" fill="none" stroke="#C8903A" stroke-width="1.5" opacity="0.7"/>
+  <circle cx="160" cy="32" r="6" fill="none" stroke="#C8903A" stroke-width="1" opacity="0.6"/>
+  <!-- Corner glyph spirals (bottom-left) -->
+  <rect x="18" y="146" width="28" height="28" rx="3" fill="none" stroke="#C8903A" stroke-width="1.5" opacity="0.7"/>
+  <circle cx="32" cy="160" r="6" fill="none" stroke="#C8903A" stroke-width="1" opacity="0.6"/>
+  <!-- Corner glyph spirals (bottom-right) -->
+  <rect x="146" y="146" width="28" height="28" rx="3" fill="none" stroke="#C8903A" stroke-width="1.5" opacity="0.7"/>
+  <circle cx="160" cy="160" r="6" fill="none" stroke="#C8903A" stroke-width="1" opacity="0.6"/>
+  <!-- Dot border pattern -->
+  <circle cx="96" cy="12" r="2.5" fill="#C8903A" opacity="0.6"/>
+  <circle cx="96" cy="180" r="2.5" fill="#C8903A" opacity="0.6"/>
+  <circle cx="12" cy="96" r="2.5" fill="#C8903A" opacity="0.6"/>
+  <circle cx="180" cy="96" r="2.5" fill="#C8903A" opacity="0.6"/>
+  <!-- Jade accent dots -->
+  <circle cx="56" cy="12" r="2" fill="#2D7A4F" opacity="0.5"/>
+  <circle cx="136" cy="12" r="2" fill="#2D7A4F" opacity="0.5"/>
+  <circle cx="56" cy="180" r="2" fill="#2D7A4F" opacity="0.5"/>
+  <circle cx="136" cy="180" r="2" fill="#2D7A4F" opacity="0.5"/>
+  <!-- Stylized corn / plant stem -->
+  <line x1="96" y1="140" x2="96" y2="55" stroke="#2D7A4F" stroke-width="2.5" stroke-linecap="round"/>
+  <ellipse cx="96" cy="50" rx="10" ry="18" fill="#C8B830" opacity="0.85"/>
+  <!-- Leaf left -->
+  <path d="M96 90 Q76 82 70 68" stroke="#2D7A4F" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- Leaf right -->
+  <path d="M96 78 Q116 70 120 56" stroke="#2D7A4F" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- K letter in serif style -->
+  <text x="96" y="158" text-anchor="middle" font-family="Georgia, 'DM Serif Display', serif" font-size="52" font-weight="400" fill="#D4C88A" opacity="0.95">K</text>
 </svg>

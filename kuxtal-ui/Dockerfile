@@ -24,10 +24,10 @@ RUN { \
   echo '  index index.html;'; \
   echo '  gzip on;'; \
   echo '  gzip_types text/plain text/css application/javascript application/json image/svg+xml;'; \
-  echo '  add_header Cross-Origin-Opener-Policy "same-origin" always;'; \
-  echo '  add_header Cross-Origin-Embedder-Policy "require-corp" always;'; \
+  echo '  location = /sw.js { add_header Cache-Control "public, max-age=0, must-revalidate"; add_header Service-Worker-Allowed "/"; }'; \
+  echo '  location = /manifest.webmanifest { add_header Cache-Control "public, max-age=0, must-revalidate"; }'; \
   echo '  location / { try_files $uri $uri/ /index.html; }'; \
-  echo '  location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; add_header Cross-Origin-Opener-Policy "same-origin" always; add_header Cross-Origin-Embedder-Policy "require-corp" always; }'; \
+  echo '  location /assets/ { expires 1y; add_header Cache-Control "public, immutable"; }'; \
   echo '}'; \
 } > /etc/nginx/conf.d/default.conf
 

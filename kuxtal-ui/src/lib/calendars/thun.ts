@@ -1,6 +1,8 @@
 // Approximate biodynamic (Maria Thun) day-kind based on the Moon's tropical-zodiac sign.
 // Approximation: simple lunar longitude estimate; intended as an opt-in guide, not precise ephemeris.
 
+import { tr, type TranslationKey } from '../i18n/translate';
+
 export type ThunDay = 'raiz' | 'hoja' | 'flor' | 'fruto';
 
 const SIGN_TO_KIND: ThunDay[] = [
@@ -19,12 +21,20 @@ export function thunForDate(date: Date): { sign: number; kind: ThunDay } {
   return { sign, kind: SIGN_TO_KIND[sign] };
 }
 
-export const THUN_LABELS: Record<ThunDay, { label: string; emoji: string; advice: string }> = {
-  raiz: { label: 'Día raíz', emoji: '🥕', advice: 'Buen día para sembrar y trabajar tubérculos y raíces.' },
-  hoja: { label: 'Día hoja', emoji: '🌿', advice: 'Favorable para hortalizas de hoja y forrajes.' },
-  flor: { label: 'Día flor', emoji: '🌸', advice: 'Buen día para floración, plantas aromáticas y polinización.' },
-  fruto: { label: 'Día fruto', emoji: '🍅', advice: 'Favorable para frutos, semillas y granos.' }
+export const THUN_EMOJI: Record<ThunDay, string> = {
+  raiz: '🥕', hoja: '🌿', flor: '🌸', fruto: '🍅'
 };
+
+/** Localized full label ("Root day"), short label ("root") and advice. */
+export function thunLabel(kind: ThunDay): string {
+  return tr(`thun_${kind}_label` as TranslationKey);
+}
+export function thunShort(kind: ThunDay): string {
+  return tr(`thun_${kind}_short` as TranslationKey);
+}
+export function thunAdvice(kind: ThunDay): string {
+  return tr(`thun_${kind}_advice` as TranslationKey);
+}
 
 function julianDay(date: Date): number {
   return date.getTime() / 86_400_000 + 2440587.5;

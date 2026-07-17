@@ -133,21 +133,21 @@
   .measurement-overlay {
     position: absolute;
     inset: 0;
-    z-index: 5;
+    z-index: var(--z-map-overlay);
     pointer-events: none;
   }
   .ruler-label {
     font-family: var(--mono);
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     fill: var(--ink-soft);
     letter-spacing: 0.04em;
   }
   .ruler-label-y {
-    font-size: 8px;
+    font-size: calc(8px * var(--text-scale));
   }
   .ruler-corner {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     fill: var(--ink-soft);
   }
 </style>

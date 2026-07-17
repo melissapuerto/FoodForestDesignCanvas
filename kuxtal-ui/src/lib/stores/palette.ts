@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { exec, selectAll } from '../db/sqlite';
 
-export type Palette = 'codice' | 'tierra' | 'cartografico' | 'botanico';
+export type Palette = 'codice' | 'tierra' | 'cartografico' | 'botanico' | 'noche';
 
 const STORAGE_KEY = 'codex.palette';
 
@@ -15,7 +15,7 @@ export function loadPalette(): void {
     );
     if (rows[0]?.value) {
       const v = JSON.parse(rows[0].value) as Palette;
-      if (v === 'codice' || v === 'tierra' || v === 'cartografico' || v === 'botanico') {
+      if (v === 'codice' || v === 'tierra' || v === 'cartografico' || v === 'botanico' || v === 'noche') {
         palette.set(v);
       }
     }

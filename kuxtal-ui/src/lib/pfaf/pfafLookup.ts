@@ -1,42 +1,13 @@
-export type PfafEntry = {
-  id: string;
-  n: string;
-  sci: string;
-  f: string;
-  type: string;
-  space: number;
-  sun: string;
-  water: string;
-  soil: string;
-  hard: number;
-  edible: number;
-  med: number;
-  other: number;
-  hab: string;
-};
-
-let cachedDb: PfafEntry[] | null = null;
+export type { PfafEntry } from './pfafPool';
+import { allPfafPlants, type PfafEntry } from './pfafPool';
 
 export async function searchPfaf(query: string): Promise<PfafEntry[]> {
   if (!query || query.trim().length < 2) return [];
 
-  // Load from extended bundle if not in memory
-  if (!cachedDb) {
-    try {
-      const res = await fetch('/data/pfaf_extended.json');
-      if (res.ok) {
-        cachedDb = await res.json();
-      } else {
-        cachedDb = [];
-      }
-    } catch (err) {
-      console.warn('Could not load pfaf_extended.json', err);
-      cachedDb = [];
-    }
-  }
+  const cachedDb = allPfafPlants();
 
   const q = query.toLowerCase().trim();
-  let results = (cachedDb || []).filter((p) =>
+  let results = cachedDb.filter((p) =>
     p.n.toLowerCase().includes(q) ||
     p.sci.toLowerCase().includes(q)
   );

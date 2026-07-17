@@ -3,6 +3,7 @@
     species,
     insertPlantSpecies,
     importPlantSpeciesFromJson,
+    dbReady,
     type SpeciesRow
   } from '../../lib/stores/appState'
   import { listRulesForSpecies } from '../../lib/rules/engine'
@@ -14,6 +15,15 @@
   import { showToast } from '../../lib/stores/toast'
   import { addRecentPlant } from '../../lib/stores/recents'
   import { searchPfaf, type PfafEntry } from '../../lib/pfaf/pfafLookup'
+  import { isDbReady } from '../../lib/db/sqlite'
+  import { getSiteContext } from '../../lib/pfaf/siteContext'
+  import { filterSpeciesForSite, sortSpeciesForSite } from '../../lib/pfaf/catalogSort'
+  import { bioregionLabel } from '../../lib/climate/region'
+  import { localSpeciesName, localSpeciesNotes, localPfafField, localFunction, localEdiblePart, localRuleMessage } from '../../lib/i18n/dataLocal'
+  import { t, type TranslationKey } from '../../lib/i18n/index.svelte'
+  import { dialogAlert } from '../../lib/stores/dialog'
+  import { classifyProvenance, provenanceLabelKey, provenanceGlyph, isCommunityKnowledge } from '../../lib/pfaf/provenance'
+  import type { GlyphName } from '../../lib/glyphs/glyph-data'
 
   let {
     onPick
@@ -21,8 +31,23 @@
     onPick?: (id: string) => void
   } = $props()
 
-  let allSpecies: SpeciesRow[] = $state([])
-  species.subscribe((rows) => (allSpecies = rows))
+  // ---- Provenance (PD-10) ----
+  function provLabel(source: string | null): string {
+    return t(provenanceLabelKey(classifyProvenance(source)) as TranslationKey)
+  }
+  function provIcon(source: string | null): GlyphName {
+    return provenanceGlyph(classifyProvenance(source)) as GlyphName
+  }
+  function explainProvenance(): void {
+    dialogAlert({ title: t('prov_explain_title'), body: t('prov_explain_body') })
+  }
+
+  let importInputEl: HTMLInputElement | null = $state(null)
+  let newPlantBtnEl: HTMLButtonElement | null = $state(null)
+  // Auto-subscriptions: the catalog remounts on every drawer open, and manual
+  // .subscribe() calls leaked once per open.
+  const allSpecies = $derived($species)
+  const catalogDbReady = $derived($dbReady)
 
   let query = $state('')
   let originFilter = $state<Set<'native' | 'adapted' | 'invasive'>>(
@@ -45,9 +70,12 @@
     return ['all', ...Array.from(set).sort()]
   })
 
+  const siteCtx = $derived(catalogDbReady && isDbReady() ? getSiteContext() : null)
+
   let filtered = $derived.by(() => {
     const q = query.trim().toLowerCase()
-    return allSpecies.filter((sp) => {
+    const base = filterSpeciesForSite(allSpecies, siteCtx)
+    const rows = base.filter((sp) => {
       const aliasesStr = sp.aliases
         ? (() => {
             try {
@@ -59,7 +87,9 @@
         : ''
       const matchesQ =
         !q ||
-        `${sp.common_name} ${sp.scientific_name ?? ''} ${aliasesStr} ${sp.notes ?? ''}`
+        // Match the name shown in the active language as well as the stored
+        // Spanish one, so an English user can search "avocado" or "aguacate".
+        `${sp.common_name} ${localSpeciesName(sp.common_name, sp.scientific_name)} ${sp.scientific_name ?? ''} ${aliasesStr} ${sp.notes ?? ''} ${localSpeciesNotes(sp.id, sp.notes)}`
           .toLowerCase()
           .includes(q)
       const matchesO = sp.origin ? originFilter.has(sp.origin as any) : true
@@ -67,6 +97,7 @@
       const matchesF = functionFilter === 'all' || fns.includes(functionFilter)
       return matchesQ && matchesO && matchesF
     })
+    return sortSpeciesForSite(rows, siteCtx)
   })
 
   let remoteResults = $state<PfafEntry[]>([])
@@ -149,7 +180,7 @@
   async function runSearch(): Promise<void> {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       showToast({
-        message: 'Escribe al menos 2 letras para buscar.',
+        message: t('plant_min_chars'),
         tone: 'warn'
       })
       return
@@ -160,7 +191,7 @@
     searching = false
     if (res.length === 0) {
       showToast({
-        message: 'No se encontraron resultados en PFAF.',
+        message: t('plant_no_results'),
         tone: 'info'
       })
     }
@@ -184,8 +215,10 @@
     if (r.hab) fns.push(r.hab)
     newFunctions = fns.join(', ')
 
-    newNotes = `Familia: ${r.f}. Resistencia térmica: ${r.hard}. Suelo: ${r.soil}. Agua: ${r.water}. Importado desde base PFAF.`
+    newNotes = t('pg_import_notes_pfaf', { family: r.f, hard: String(r.hard), soil: r.soil, water: r.water })
     searchResults = []
+    showToast({ message: t('plant_pfaf_filled'), tone: 'info' })
+    setTimeout(() => document.getElementById('np-name')?.focus(), 50)
   }
 
   function onImportFile(e: Event): void {
@@ -197,13 +230,11 @@
       const r = importPlantSpeciesFromJson(String(reader.result))
       input.value = ''
       if (r.errors && !(r.added + r.updated)) {
-        showToast({
-          message: 'No pude leer ese archivo. Revisa que sea un JSON válido.',
-          tone: 'error'
-        })
+        showToast({ message: t('file_import_err'), tone: 'error' })
       } else {
         showToast({
-          message: `${r.added} agregadas, ${r.updated} actualizadas${r.errors ? `, ${r.errors} con error` : ''}.`,
+          message: t('file_import_result', { added: String(r.added), updated: String(r.updated) }) +
+            (r.errors ? t('file_import_errors_part', { n: String(r.errors) }) : ''),
           tone: r.errors ? 'warn' : 'ok'
         })
       }
@@ -214,7 +245,7 @@
   function saveCreate(): void {
     const name = newName.trim()
     if (!name) {
-      showToast({ message: 'El nombre común es obligatorio.', tone: 'warn' })
+      showToast({ message: t('plant_name_required'), tone: 'warn' })
       return
     }
     const fns = newFunctions
@@ -232,8 +263,9 @@
       notes: newNotes.trim() || null,
       glyph: 'Seed'
     })
-    showToast({ message: `Planta "${name}" agregada al códice.`, tone: 'ok' })
+    showToast({ message: t('plant_saved_toast', { name }), tone: 'ok' })
     creating = false
+    setTimeout(() => newPlantBtnEl?.focus(), 50)
   }
 </script>
 
@@ -246,33 +278,40 @@
       class="label"
       aria-live="polite"
     >
-      {filtered.length} de {allSpecies.length} especies
+      {t('pg_count', { n: String(filtered.length), total: String(allSpecies.length) })}
+      {#if siteCtx?.bioregion}
+        · {t('pg_priority', { region: bioregionLabel(siteCtx.bioregion) })}
+      {/if}
     </div>
     <div
       class="row"
       style="gap: 6px;"
     >
-      <label class="btn btn-sm">
+      <button type="button" class="btn btn-sm" onclick={() => importInputEl?.click()}>
         <Glyph
           name="ArrowRight"
           size={12}
-        /> Importar JSON
-        <input
-          type="file"
-          accept="application/json,.json"
-          hidden
-          onchange={onImportFile}
-        />
-      </label>
+        /> {t('plant_import_json')}
+      </button>
+      <input
+        bind:this={importInputEl}
+        type="file"
+        accept="application/json,.json"
+        onchange={onImportFile}
+        style="display: none;"
+        tabindex="-1"
+        aria-hidden="true"
+      />
       <button
         type="button"
         class="btn btn-sm btn-accent"
+        bind:this={newPlantBtnEl}
         onclick={startCreate}
       >
         <Glyph
           name="Plus"
           size={12}
-        /> Nueva planta
+        /> {t('plant_new_btn')}
       </button>
     </div>
   </div>
@@ -280,15 +319,15 @@
     class="inp"
     style="margin-top: 10px;"
     type="search"
-    placeholder="Buscar planta..."
-    aria-label="Buscar plantas"
+    placeholder={t('plant_filter_placeholder')}
+    aria-label={t('plant_filter_aria')}
     bind:value={query}
   />
   <div
     class="row wrap"
     style="margin-top: 8px;"
     role="group"
-    aria-label="Filtros de origen"
+    aria-label={t('a11y_pg_filter_origin')}
   >
     {#each ['native', 'adapted', 'invasive'] as o}
       <button
@@ -300,17 +339,17 @@
         aria-pressed={originFilter.has(o as any)}
         onclick={() => toggleOrigin(o as any)}
       >
-        {o === 'native' ? 'Nativa' : o === 'adapted' ? 'Adaptada' : 'Invasora'}
+        {o === 'native' ? t('plant_origin_native') : o === 'adapted' ? t('plant_origin_adapted') : t('plant_origin_invasive')}
       </button>
     {/each}
     <select
       class="inp"
       style="max-width: 200px; min-height: 36px;"
       bind:value={functionFilter}
-      aria-label="Filtrar por función"
+      aria-label={t('a11y_pg_filter_function')}
     >
       {#each allFunctions as f}
-        <option value={f}>{f === 'all' ? 'Todas las funciones' : f}</option>
+        <option value={f}>{f === 'all' ? t('plant_all_functions') : f}</option>
       {/each}
     </select>
   </div>
@@ -327,18 +366,18 @@
       class="label"
       style="display:flex; justify-content:space-between; align-items:center;"
     >
-      <span>Nueva planta</span>
+      <span>{t('plant_new_btn')}</span>
     </div>
 
     <div class="field-row">
-      <label for="pfaf-search">Buscar en Catálogo (PFAF extendido)</label>
+      <label for="pfaf-search">{t('plant_catalog_label')}</label>
       <div style="display: flex; gap: 8px;">
         <input
           id="pfaf-search"
           class="inp"
           type="search"
           bind:value={searchQuery}
-          placeholder="Buscar especie o nombre..."
+          placeholder={t('plant_catalog_placeholder')}
           onkeydown={(e) => e.key === 'Enter' && runSearch()}
         />
         <button
@@ -347,7 +386,7 @@
           onclick={runSearch}
           disabled={searching}
         >
-          {#if searching}Buscando...{:else}Buscar{/if}
+          {#if searching}{t('anim_searching')}{:else}{t('anim_search_btn')}{/if}
         </button>
       </div>
     </div>
@@ -362,7 +401,7 @@
             style="text-align: left; padding: 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper);"
             onclick={() => pickPfaf(r)}
           >
-            <strong>{r.n}</strong> <em>{r.sci}</em>
+            <strong>{localSpeciesName(r.n, r.sci)}</strong> <em>{r.sci}</em>
           </button>
         {/each}
       </div>
@@ -374,21 +413,21 @@
       aria-hidden="true"
     ></div>
     <div class="field-row">
-      <label for="np-name">Nombre común *</label>
+      <label for="np-name">{t('plant_common_name')}</label>
       <input
         id="np-name"
         class="inp"
         bind:value={newName}
-        placeholder="ej. Papayuela"
+        placeholder={t('a11y_pg_ex_common')}
       />
     </div>
     <div class="field-row">
-      <label for="np-sci">Nombre científico</label>
+      <label for="np-sci">{t('anim_sci_name')}</label>
       <input
         id="np-sci"
         class="inp"
         bind:value={newSci}
-        placeholder="ej. Vasconcellea pubescens"
+        placeholder={t('a11y_pg_ex_scientific')}
       />
     </div>
     <div
@@ -399,7 +438,7 @@
         class="field-row"
         style="flex: 1;"
       >
-        <label for="np-spacing">Espaciado (m)</label>
+        <label for="np-spacing">{t('plant_spacing_label')}</label>
         <input
           id="np-spacing"
           class="inp"
@@ -411,65 +450,65 @@
       </div>
       <SelectWithOther
         id="np-sun"
-        label="Sol"
+        label={t('plant_sun_label')}
         value={newSun}
         options={[
-          { v: 'completo', l: 'Sol pleno' },
-          { v: 'parcial', l: 'Sol parcial' },
-          { v: 'sombra', l: 'Sombra' }
+          { v: 'completo', l: t('sun_completo') },
+          { v: 'parcial', l: t('sun_parcial') },
+          { v: 'sombra', l: t('sun_sombra') }
         ]}
-        otherLabel="Otra exposición…"
-        placeholder="ej. matinal"
+        otherLabel={t('sun_other')}
+        placeholder={t('sun_other_placeholder')}
         onValueChange={(v) => (newSun = v)}
         width="100%"
       />
     </div>
     <SelectWithOther
       id="np-type"
-      label="Tipo"
+      label={t('plant_type_label')}
       value={newType}
       options={[
-        { v: 'arbol-alto', l: 'Árbol alto' },
-        { v: 'arbol-medio', l: 'Árbol medio' },
-        { v: 'arbusto', l: 'Arbusto' },
-        { v: 'herbaceo', l: 'Herbácea' },
-        { v: 'trepadora', l: 'Trepadora' },
-        { v: 'cobertura', l: 'Cobertura' }
+        { v: 'arbol-alto', l: t('plant_type_tall_tree') },
+        { v: 'arbol-medio', l: t('plant_type_mid_tree') },
+        { v: 'arbusto', l: t('plant_type_shrub') },
+        { v: 'herbaceo', l: t('plant_type_herbaceous') },
+        { v: 'trepadora', l: t('plant_type_vine') },
+        { v: 'cobertura', l: t('plant_type_cover') }
       ]}
-      otherLabel="Otro tipo…"
-      placeholder="ej. palma"
+      otherLabel={t('plant_type_other')}
+      placeholder={t('plant_type_placeholder')}
       onValueChange={(v) => (newType = v)}
     />
     <SelectWithOther
       id="np-origin"
-      label="Origen"
+      label={t('plant_origin_label')}
       value={newOrigin}
       options={[
-        { v: 'native', l: 'Nativa' },
-        { v: 'adapted', l: 'Adaptada' },
-        { v: 'invasive', l: 'Invasora' }
+        { v: 'native', l: t('plant_origin_native') },
+        { v: 'adapted', l: t('plant_origin_adapted') },
+        { v: 'invasive', l: t('plant_origin_invasive') }
       ]}
-      otherLabel="Otro origen…"
-      placeholder="ej. naturalizada"
+      otherLabel={t('plant_origin_other')}
+      placeholder={t('plant_origin_placeholder')}
       onValueChange={(v) => (newOrigin = v)}
     />
     <div class="field-row">
-      <label for="np-fns">Funciones (separadas por coma)</label>
+      <label for="np-fns">{t('plant_functions_label')}</label>
       <input
         id="np-fns"
         class="inp"
         bind:value={newFunctions}
-        placeholder="ej. comestible, medicinal"
+        placeholder={t('plant_functions_placeholder')}
       />
     </div>
     <div class="field-row">
-      <label for="np-notes">Notas</label>
+      <label for="np-notes">{t('plant_notes_label')}</label>
       <textarea
         id="np-notes"
         class="inp"
         rows="2"
         bind:value={newNotes}
-        placeholder="Cómo crece, sus usos, lo que sabes."
+        placeholder={t('plant_notes_placeholder')}
       ></textarea>
     </div>
     <div
@@ -483,11 +522,11 @@
         <Glyph
           name="Check"
           size={14}
-        /> Guardar planta
+        /> {t('plant_save_btn')}
       </button>
       <button
         class="btn"
-        onclick={cancelCreate}>Cancelar</button
+        onclick={cancelCreate}>{t('common_cancel')}</button
       >
     </div>
   </section>
@@ -504,7 +543,7 @@
         type="button"
         class="plant-head"
         aria-expanded={isOpen}
-        aria-label={`${sp.common_name}, ${sp.scientific_name ?? ''}, espacio ${sp.spacing_m} metros`}
+        aria-label={t('pg_plant_aria', { name: localSpeciesName(sp.common_name, sp.scientific_name), sci: sp.scientific_name ?? '', m: String(sp.spacing_m) })}
         onclick={() => (openId = isOpen ? null : sp.id)}
       >
         <span
@@ -517,10 +556,14 @@
           />
         </span>
         <span class="plant-text">
-          <span class="plant-name">{sp.common_name}</span>
+          <span class="plant-name">{localSpeciesName(sp.common_name, sp.scientific_name)}</span>
           {#if sp.scientific_name}
             <span class="plant-latin">{sp.scientific_name}</span>
           {/if}
+          <span class="plant-prov" class:community={isCommunityKnowledge(sp.source)}>
+            <Glyph name={provIcon(sp.source)} size={10} />
+            {provLabel(sp.source)}
+          </span>
         </span>
         <span class="coord">{formatMeters(sp.spacing_m)}</span>
       </button>
@@ -533,13 +576,13 @@
             {#if sp.image_url}
               <img
                 src={sp.image_url}
-                alt={sp.common_name}
+                alt={localSpeciesName(sp.common_name, sp.scientific_name)}
                 style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line);"
               />
             {:else}
               <button
                 type="button"
-                aria-label="Agregar foto"
+                aria-label={t('a11y_add_photo')}
                 style="width: 80px; height: 80px; border-radius: 8px; border: 1px dashed var(--line); display: flex; align-items: center; justify-content: center; background: var(--paper-warm); cursor: pointer;"
                 onclick={() => {
                   const input = document.createElement('input')
@@ -575,23 +618,36 @@
             {/if}
             <div style="flex: 1;">
               <h3
-                style="margin: 0; font-family: var(--serif); color: var(--ink);"
+                style="margin: 0; font-family: var(--serif); font-weight: var(--display-weight); color: var(--ink);"
               >
-                {sp.common_name}
+                {localSpeciesName(sp.common_name, sp.scientific_name)}
               </h3>
               <div
                 class="coord"
                 style="color: var(--ink-soft);"
               >
-                {sp.scientific_name || 'Desconocido'}
+                {sp.scientific_name || t('plant_unknown_sci')}
               </div>
             </div>
+          </div>
+          <div class="detail-row" style="align-items: center;">
+            <span class="detail-label">{t('prov_source_label')}</span>
+            <span class="detail-value" style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <Glyph name={provIcon(sp.source)} size={13} />
+              {provLabel(sp.source)}
+              {#if isCommunityKnowledge(sp.source)}
+                <span class="chip chip-jade">{t('prov_community_tag')}</span>
+              {/if}
+              <button type="button" class="prov-q" onclick={explainProvenance} aria-label={t('prov_explain_aria')}>
+                {t('prov_explain_btn')}
+              </button>
+            </span>
           </div>
           {#if sp.aliases}
             {@const aliases = parseList(sp.aliases)}
             {#if aliases.length > 0}
               <div class="detail-row">
-                <span class="detail-label">También conocida como:</span>
+                <span class="detail-label">{t('pg_aka')}</span>
                 <span class="detail-value">{aliases.join(', ')}</span>
               </div>
             {/if}
@@ -614,13 +670,13 @@
             {@const parts = parseList(sp.edible_parts)}
             {#if parts.length > 0}
               <div class="detail-row">
-                <span class="detail-label">Partes comestibles:</span>
-                <span class="detail-value">{parts.join(', ')}</span>
+                <span class="detail-label">{t('pg_edible_parts')}</span>
+                <span class="detail-value">{parts.map(localEdiblePart).join(', ')}</span>
               </div>
             {/if}
           {/if}
           {#if sp.notes}
-            <p class="plant-note">{sp.notes}</p>
+            <p class="plant-note">{localSpeciesNotes(sp.id, sp.notes)}</p>
           {/if}
           <div class="tag-row">
             {#if sp.origin}
@@ -632,10 +688,10 @@
                     : 'chip-ocre'}"
               >
                 {sp.origin === 'native'
-                  ? 'nativa'
+                  ? t('pg_origin_native')
                   : sp.origin === 'adapted'
-                    ? 'adaptada'
-                    : 'invasora'}
+                    ? t('pg_origin_adapted')
+                    : t('pg_origin_invasive')}
               </span>
             {/if}
             {#if sp.sun}
@@ -644,11 +700,11 @@
                   name="Sun"
                   size={12}
                 />
-                {sp.sun}</span
+                {localPfafField(sp.sun)}</span
               >
             {/if}
             {#each parseList(sp.functions) as fn}
-              <span class="chip chip-jade">{fn}</span>
+              <span class="chip chip-jade">{localFunction(fn)}</span>
             {/each}
           </div>
           {#each rulesFor(sp.id) as rule}
@@ -658,7 +714,7 @@
                 ? 'warn'
                 : 'ok'}"
             >
-              {rule.message}
+              {localRuleMessage(rule)}
             </div>
           {/each}
           {#if onPick}
@@ -673,7 +729,7 @@
               <Glyph
                 name="Plus"
                 size={14}
-              /> Sembrar esta especie
+              /> {t('plant_pick_btn')}
             </button>
           {/if}
         </div>
@@ -681,13 +737,12 @@
     </article>
   {:else}
     <div class="empty">
-      No hay plantas locales para "{query}". Prueba buscar en el registro global
-      usando el botón "Crear especie".
+      {t('plant_local_empty', { query })}
     </div>
   {/each}
 
   {#if remoteSearching}
-    <div class="empty">Buscando en registros en línea...</div>
+    <div class="empty" role="status">{t('plant_remote_searching')}</div>
   {/if}
 
   {#if remoteResults.length > 0}
@@ -697,9 +752,9 @@
       aria-hidden="true"
     ></div>
     <div
-      style="font-family: var(--serif); font-size: 14px; color: var(--ink-soft); margin-bottom: 8px;"
+      style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(14px * var(--text-scale)); color: var(--ink-soft); margin-bottom: 8px;"
     >
-      Resultados desde la base de datos global:
+      {t('plant_remote_heading')}
     </div>
     {#each remoteResults as r}
       <article class="plant-row">
@@ -725,13 +780,10 @@
                   ? 'sombra'
                   : 'parcial',
               functions: fns,
-              notes: `Familia: ${r.f}. Resistencia térmica: ${r.hard}. Suelo: ${r.soil}. Agua: ${r.water}. Importado desde base global.`,
+              notes: t('pg_import_notes_global', { family: r.f, hard: String(r.hard), soil: r.soil, water: r.water }),
               glyph: 'Seed'
             })
-            showToast({
-              message: `Especie "${r.n}" importada y seleccionada.`,
-              tone: 'ok'
-            })
+            showToast({ message: t('plant_remote_imported', { name: r.n }), tone: 'ok' })
             if (onPick) onPick(id)
           }}
         >
@@ -750,12 +802,12 @@
           </span>
           <span
             class="chip chip-jade"
-            style="font-size: 11px;"
+            style="font-size: calc(11px * var(--text-scale));"
           >
             <Glyph
               name="ArrowRight"
               size={12}
-            /> Importar y sembrar
+            /> {t('plant_remote_import')}
           </span>
         </button>
       </article>
@@ -804,16 +856,41 @@
     min-width: 0;
   }
   .plant-name {
-    font-family: var(--serif);
-    font-size: 18px;
+    font-family: var(--serif); font-weight: var(--display-weight);
+    font-size: calc(18px * var(--text-scale));
     line-height: 1.1;
   }
   .plant-latin {
-    font-family: var(--serif);
+    font-family: var(--serif); font-weight: var(--display-weight);
     font-style: italic;
-    font-size: 12px;
+    font-size: calc(12px * var(--text-scale));
     color: var(--ink-soft);
   }
+  .plant-prov {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: calc(9px * var(--text-scale));
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  /* Community knowledge is distinguished by the icon + this weight, not colour alone. */
+  .plant-prov.community { color: var(--jade-deep); font-weight: 600; }
+  .prov-q {
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--ocre-deep);
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: calc(10px * var(--text-scale));
+    padding: 2px 8px;
+    cursor: pointer;
+    min-height: 28px;
+  }
+  .prov-q:hover { background: var(--paper-warm); }
   .plant-body {
     display: flex;
     flex-direction: column;
@@ -822,8 +899,8 @@
     border-top: 1px dashed var(--line);
   }
   .plant-note {
-    font-family: var(--serif);
-    font-size: 14px;
+    font-family: var(--serif); font-weight: var(--display-weight);
+    font-size: calc(14px * var(--text-scale));
     line-height: 1.5;
     color: var(--ink-soft);
   }
@@ -831,18 +908,18 @@
     display: flex;
     gap: 6px;
     align-items: baseline;
-    font-size: 13px;
+    font-size: calc(13px * var(--text-scale));
   }
   .detail-label {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--ink-soft);
     white-space: nowrap;
   }
   .detail-value {
-    font-family: var(--serif);
+    font-family: var(--serif); font-weight: var(--display-weight);
     color: var(--ink);
   }
 </style>

@@ -1,3 +1,5 @@
+import { tr, type TranslationKey } from '../i18n/translate';
+
 export type LunarPhase = 'nueva' | 'creciente' | 'llena' | 'menguante';
 
 const SYNODIC = 29.530588853;
@@ -27,9 +29,7 @@ const PHASE_EMOJI: Record<LunarPhase, string> = {
   menguante: '🌘'
 };
 
-export const PHASE_LABELS: Record<LunarPhase, string> = {
-  nueva: 'Luna nueva',
-  creciente: 'Luna creciente',
-  llena: 'Luna llena',
-  menguante: 'Luna menguante'
-};
+/** Localized label for a lunar phase. */
+export function phaseLabel(phase: LunarPhase): string {
+  return tr(`phase_${phase}` as TranslationKey);
+}

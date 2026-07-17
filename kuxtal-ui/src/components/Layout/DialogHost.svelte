@@ -1,12 +1,23 @@
 <script lang="ts">
   import { activeDialog, closeDialog } from '../../lib/stores/dialog';
   import { onMount } from 'svelte';
+  import { t } from '../../lib/i18n/index.svelte';
 
   let inputEl: HTMLInputElement | null = $state(null);
   let textareaEl: HTMLTextAreaElement | null = $state(null);
   let confirmBtn: HTMLButtonElement | null = $state(null);
   let inputValue = $state('');
   let lastFocus: HTMLElement | null = null;
+  let dlgEl: HTMLElement | null = $state(null);
+
+  function focusableEls(): HTMLElement[] {
+    if (!dlgEl) return [];
+    const sel =
+      'button, a[href], input, textarea, select, [tabindex]:not([tabindex="-1"])';
+    return Array.from(dlgEl.querySelectorAll<HTMLElement>(sel)).filter(
+      (el) => !el.hasAttribute('disabled') && el.offsetParent !== null
+    );
+  }
 
   $effect(() => {
     const dlg = $activeDialog;
@@ -36,6 +47,25 @@
       if (dlg.kind === 'prompt' && !allow && !inputValue.trim()) return;
       e.preventDefault();
       closeDialog(value);
+    }
+    if (e.key === 'Tab') {
+      // Trap focus inside the modal dialog.
+      const els = focusableEls();
+      if (els.length === 0) {
+        e.preventDefault();
+        dlgEl?.focus();
+        return;
+      }
+      const first = els[0];
+      const last = els[els.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (active === first || !dlgEl?.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   }
 
@@ -74,11 +104,13 @@
     }}
   >
     <div
+      bind:this={dlgEl}
       class="dlg"
       role="dialog"
       aria-modal="true"
       aria-labelledby="dlgTitle"
       aria-describedby={dlg.body ? 'dlgBody' : undefined}
+      tabindex="-1"
     >
       <h2 id="dlgTitle">{dlg.title}</h2>
       {#if dlg.body}
@@ -109,7 +141,7 @@
       <div class="dlg-actions">
         {#if dlg.cancelLabel !== ''}
           <button type="button" class="btn bo" onclick={cancel}>
-            {dlg.cancelLabel ?? 'Cancelar'}
+            {dlg.cancelLabel ?? t('dialog_cancel')}
           </button>
         {/if}
         <button
@@ -119,7 +151,7 @@
           bind:this={confirmBtn}
           onclick={confirm}
         >
-          {dlg.confirmLabel ?? (dlg.kind === 'alert' ? 'Entendido' : 'Aceptar')}
+          {dlg.confirmLabel ?? (dlg.kind === 'alert' ? t('dialog_understood') : t('dialog_confirm'))}
         </button>
       </div>
     </div>
@@ -134,8 +166,8 @@
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    z-index: 250;
-    padding: 12px;
+    z-index: var(--z-dialog);
+    padding: max(12px, var(--safe-top)) max(12px, var(--safe-right)) max(12px, var(--safe-bottom)) max(12px, var(--safe-left));
   }
   .dlg {
     background: var(--paper, #FAF8F2);
@@ -150,8 +182,8 @@
     flex-direction: column;
     gap: 12px;
   }
-  .dlg h2 { color: var(--ink, #3B2F1E); font-size: 1.15rem; font-family: var(--serif); }
-  .dlg-body { font-size: 0.95rem; color: var(--ink-soft, #6B5340); line-height: 1.5; font-family: var(--serif); }
+  .dlg h2 { color: var(--ink, #3B2F1E); font-size: 1.15rem; font-family: var(--serif); font-weight: var(--display-weight); }
+  .dlg-body { font-size: 0.95rem; color: var(--ink-soft, #6B5340); line-height: 1.5; font-family: var(--serif); font-weight: var(--display-weight); }
   .dlg-hint { font-size: 0.8rem; color: var(--ink-soft); }
   .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
   .bo { background: var(--paper-warm); border: 1px solid var(--line-strong); color: var(--ink); }

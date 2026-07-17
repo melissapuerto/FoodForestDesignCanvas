@@ -36,14 +36,10 @@ export async function subscribeToPush(): Promise<boolean> {
       return true;
     }
 
-    // Ensure the buffer is a plain ArrayBuffer (not ArrayBufferLike/SharedArrayBuffer)
-    // to satisfy lib.dom's PushSubscriptionOptionsInit typing.
-    const applicationServerKey = Uint8Array.from(urlBase64ToUint8Array(key)).buffer;
-
-    const sub = await reg.pushManager.subscribe({
+        const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey,
-    });
+      applicationServerKey: urlBase64ToUint8Array(key) as unknown as BufferSource,
+        });
     await sendSubscriptionToServer(sub);
     setPushEnabled(true);
     return true;
@@ -86,5 +82,8 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const raw = atob(base64);
-  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+  // Avoid Uint8Array<ArrayBufferLike> inference (SharedArrayBuffer) in TS lib.dom typings.
+  const out = new Uint8Array(new ArrayBuffer(raw.length));
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
 }

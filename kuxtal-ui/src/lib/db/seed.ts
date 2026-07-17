@@ -2,9 +2,14 @@ import type { Database } from '@sqlite.org/sqlite-wasm';
 import { ANIMAL_SEED, PDB } from '../pfaf/seed-data';
 import { plantGlyph, animalGlyph } from '../glyphs/mapping';
 import { newId, nowIso } from '../utils/id';
+import { syncAllPfafToCatalog } from '../pfaf/syncSpecies';
+import { allPfafPlants } from '../pfaf/pfafPool';
 
 export async function seedDefaults(db: Database): Promise<void> {
   if (countRows(db, 'plant_species') === 0) seedSpecies(db);
+  // Only sync when the local catalog is behind the bundled dataset (first run or data bump).
+  const pfafInDb = countRows(db, "plant_species WHERE id LIKE 'pfaf-%'");
+  if (pfafInDb < allPfafPlants().length) syncAllPfafToCatalog();
   if (countRows(db, 'animal_species') === 0) seedAnimals(db);
   if (countRows(db, 'rule') === 0) seedRules(db);
   if (countRows(db, 'land') === 0) seedDefaultLand(db);
@@ -30,10 +35,10 @@ function seedSpecies(db: Database): void {
       db.exec({
         sql: `INSERT INTO plant_species (
                 id, common_name, scientific_name, emoji, spacing_m, sun, zones,
-                plant_type, origin, functions, notes, source,
+                plant_type, origin, region, microclimates, functions, notes, source,
                 aliases, edible_parts, glyph,
                 created_at, updated_at
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         bind: [
           id,
           p.n,
@@ -44,6 +49,8 @@ function seedSpecies(db: Database): void {
           JSON.stringify(p.zn),
           p.type,
           p.origin,
+          (p as any).region ?? null,
+          (p as any).microclimates ? JSON.stringify((p as any).microclimates) : null,
           JSON.stringify(p.functions),
           p.notes,
           'kuxtal-prototype',

@@ -26,6 +26,16 @@ export type PdbEntry = {
   zn: number[];
   type: 'arbol-alto' | 'arbol-medio' | 'arbusto' | 'herbaceo' | 'trepadora' | 'cobertura';
   origin: 'native' | 'adapted' | 'invasive';
+  /**
+   * Optional region tag(s) used for filtering suggestions.
+   * Keep them short and stable (e.g. "andes", "caribe", "mesoamerica", "amazonia").
+   */
+  regions?: string[];
+  /**
+   * Optional microclimate tag(s) used for filtering suggestions.
+   * Examples: "ladera", "fondo-valle", "cerca-agua", "cortaviento", "sombra-parcial".
+   */
+  microclimates?: string[];
   functions: string[];
   notes: string;
   edible_parts?: string[];

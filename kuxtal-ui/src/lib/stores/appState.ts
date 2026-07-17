@@ -1,10 +1,11 @@
 import { writable, type Writable } from 'svelte/store';
-import { selectAll, selectOne, exec, persistenceMode } from '../db/sqlite';
+import { selectAll, selectOne, exec, persistenceMode, isDbReady } from '../db/sqlite';
 import { newId, nowIso } from '../utils/id';
+import { clearHistory } from './history';
 
 const AUTOLOG_KEY = 'kuxtal.autolog_plants';
 export const autoLogPlants = writable<boolean>(
-  typeof localStorage !== 'undefined' && localStorage.getItem(AUTOLOG_KEY) === '1'
+  (() => { try { return localStorage.getItem(AUTOLOG_KEY) === '1'; } catch { return false; } })()
 );
 autoLogPlants.subscribe((v) => {
   try { localStorage.setItem(AUTOLOG_KEY, v ? '1' : '0'); } catch {}
@@ -60,6 +61,8 @@ export type ZoneRow = {
   soil_type: string | null;
   humidity_pct: number | null;
   notes: string | null;
+  microzone_preset: string | null;
+  microzone_overrides: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -87,6 +90,8 @@ export type SpeciesRow = {
   zones: string | null;
   plant_type: string | null;
   origin: string | null;
+  region: string | null;
+  microclimates: string | null;
   functions: string | null;
   notes: string | null;
   source: string | null;
@@ -98,8 +103,16 @@ export type SpeciesRow = {
   updated_at: string;
 };
 
-export const activeLandId: Writable<string> = writable('land-default');
-export const persistence = writable<'opfs' | 'memory'>('memory');
+const ACTIVE_LAND_KEY = 'kuxtal.activeLand';
+function initialActiveLand(): string {
+  try { return localStorage.getItem(ACTIVE_LAND_KEY) || 'land-default'; }
+  catch { return 'land-default'; }
+}
+export const activeLandId: Writable<string> = writable(initialActiveLand());
+activeLandId.subscribe((v) => {
+  try { localStorage.setItem(ACTIVE_LAND_KEY, v); } catch { /* ignore */ }
+});
+export const persistence = writable<'opfs' | 'idb' | 'memory'>('memory');
 export const dbReady = writable<boolean>(false);
 
 export const lands = writable<LandRow[]>([]);
@@ -120,6 +133,7 @@ export type WaterFeatureRow = {
 };
 
 export function reloadFromDb(landId: string): void {
+  if (!isDbReady()) return;
   lands.set(selectAll<LandRow>('SELECT * FROM land ORDER BY created_at'));
   zones.set(selectAll<ZoneRow>('SELECT * FROM zone WHERE land_id = ? ORDER BY created_at', [landId]));
   planted.set(selectAll<PlantedRow>('SELECT * FROM planted WHERE land_id = ? ORDER BY created_at', [landId]));
@@ -131,7 +145,45 @@ export function reloadFromDb(landId: string): void {
 }
 
 export function getLand(landId: string): LandRow | null {
+  if (!isDbReady()) return null;
   return selectOne<LandRow>('SELECT * FROM land WHERE id = ?', [landId]);
+}
+
+// ---- Multiple canvases / lands (DC-08) ----
+
+function refreshLands(): void {
+  lands.set(selectAll<LandRow>('SELECT * FROM land ORDER BY created_at'));
+}
+
+export function createLand(name: string): string {
+  const id = newId('land');
+  const now = nowIso();
+  exec(
+    `INSERT INTO land (id, name, boundary_geojson, boundary_closed, created_at, updated_at)
+     VALUES (?,?,?,?,?,?)`,
+    [id, name.trim() || 'Nueva finca', null, 0, now, now]
+  );
+  refreshLands();
+  return id;
+}
+
+export function renameLand(id: string, name: string): void {
+  exec('UPDATE land SET name = ?, updated_at = ? WHERE id = ?', [name.trim() || 'Finca', nowIso(), id]);
+  refreshLands();
+}
+
+/** Deletes a land and (via ON DELETE CASCADE) all its zones, plants, etc. */
+export function deleteLand(id: string): void {
+  exec('DELETE FROM land WHERE id = ?', [id]);
+  refreshLands();
+}
+
+/** Switch the active canvas. Reloads its data and clears the undo history,
+ *  which referenced the previous land's rows. */
+export function setActiveLand(id: string): void {
+  activeLandId.set(id);
+  clearHistory();
+  reloadFromDb(id);
 }
 
 export function updateLandBoundary(landId: string, boundaryGeoJson: GeoJSON.Polygon | null, closed: boolean): void {
@@ -274,6 +326,8 @@ export function insertPlantSpecies(input: {
   sun?: string | null;
   plantType?: string | null;
   origin?: string | null;
+  region?: string | null;
+  microclimates?: string[] | null;
   functions?: string[] | null;
   notes?: string | null;
   aliases?: string[] | null;
@@ -285,10 +339,10 @@ export function insertPlantSpecies(input: {
   exec(
     `INSERT INTO plant_species (
        id, common_name, scientific_name, emoji, spacing_m, sun, zones,
-       plant_type, origin, functions, notes, source,
+       plant_type, origin, region, microclimates, functions, notes, source,
        aliases, edible_parts, glyph, image_url,
        created_at, updated_at
-     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       id,
       input.commonName,
@@ -299,6 +353,8 @@ export function insertPlantSpecies(input: {
       JSON.stringify([]),
       input.plantType ?? null,
       input.origin ?? null,
+      input.region ?? null,
+      input.microclimates ? JSON.stringify(input.microclimates) : null,
       JSON.stringify(input.functions ?? []),
       input.notes ?? null,
       'usuario',
@@ -358,6 +414,8 @@ function normalizePlantRow(r: any) {
     sun: r.sun ?? null,
     plantType: r.plant_type ?? r.plantType ?? r.type ?? null,
     origin: r.origin ?? null,
+    region: typeof r.region === 'string' ? r.region : null,
+    microclimates: asList(r, 'microclimates', 'micro_climates', 'microclima', 'microclimas'),
     functions: asList(r, 'functions') ?? [],
     notes: r.notes ?? null,
     aliases: asList(r, 'aliases'),
@@ -372,11 +430,14 @@ function upsertPlantRow(p: ReturnType<typeof normalizePlantRow> & object): 'adde
     exec(
       `UPDATE plant_species SET
          common_name = ?, scientific_name = ?, spacing_m = ?, sun = ?, plant_type = ?,
-         origin = ?, functions = ?, notes = ?, aliases = ?, edible_parts = ?,
+         origin = ?, region = ?, microclimates = ?, functions = ?, notes = ?, aliases = ?, edible_parts = ?,
          glyph = COALESCE(?, glyph), updated_at = ? WHERE id = ?`,
       [
         p.commonName, p.scientificName, p.spacingM, p.sun, p.plantType,
-        p.origin, JSON.stringify(p.functions), p.notes,
+        p.origin,
+        p.region ?? null,
+        p.microclimates ? JSON.stringify(p.microclimates) : null,
+        JSON.stringify(p.functions), p.notes,
         p.aliases ? JSON.stringify(p.aliases) : null,
         p.edibleParts ? JSON.stringify(p.edibleParts) : null,
         p.glyph, nowIso(), p.id
@@ -392,6 +453,8 @@ function upsertPlantRow(p: ReturnType<typeof normalizePlantRow> & object): 'adde
     sun: p.sun,
     plantType: p.plantType,
     origin: p.origin ?? 'adapted',
+    region: p.region ?? null,
+    microclimates: p.microclimates ?? null,
     functions: p.functions,
     notes: p.notes,
     aliases: p.aliases,
@@ -430,6 +493,14 @@ export function speciesById(id: string): SpeciesRow | null {
   return selectOne<SpeciesRow>('SELECT * FROM plant_species WHERE id = ?', [id]);
 }
 
+export function getPlantedById(id: string): PlantedRow | null {
+  return selectOne<PlantedRow>('SELECT * FROM planted WHERE id = ?', [id]);
+}
+
+export function getZoneById(id: string): ZoneRow | null {
+  return selectOne<ZoneRow>('SELECT * FROM zone WHERE id = ?', [id]);
+}
+
 // ---- Water features ----
 
 export function insertWaterFeature(input: {
@@ -455,6 +526,11 @@ export function deleteWaterFeature(id: string, landId: string): WaterFeatureRow 
   exec('DELETE FROM water_feature WHERE id = ?', [id]);
   reloadFromDb(landId);
   return row;
+}
+
+export function renameWaterFeature(id: string, name: string, landId: string): void {
+  exec('UPDATE water_feature SET name = ?, updated_at = ? WHERE id = ?', [name, nowIso(), id]);
+  reloadFromDb(landId);
 }
 
 export function restoreWaterFeature(row: WaterFeatureRow): void {

@@ -2,70 +2,76 @@
   import { toasts, dismissToast } from '../../lib/stores/toast';
   import { ruleMessages } from '../../lib/stores/ruleMessages';
   import Glyph from '../../lib/glyphs/Glyph.svelte';
+  import { t } from '../../lib/i18n/index.svelte';
 
-  // Stack offset so we don't collide with the RuleMessageStack codex card
-  // that occupies top-left when there are rule messages.
-  let topOffset = $derived($ruleMessages.length > 0 ? 200 : 70);
+  // Offset below the live top-bar height (--topbar-h, published by CodexTopBar)
+  // plus extra room when the RuleMessageStack card is occupying the top-centre.
+  let belowRules = $derived($ruleMessages.length > 0 ? 132 : 12);
 </script>
 
-<div class="toast-stack" aria-live="polite" aria-relevant="additions text" style="top: {topOffset}px;">
-  {#each $toasts.slice(0, 4) as t (t.id)}
+<div
+  class="toast-stack"
+  aria-live="polite"
+  aria-relevant="additions text"
+  style="top: calc(var(--topbar-h, 64px) + {belowRules}px);"
+>
+  {#each $toasts.slice(0, 4) as toast (toast.id)}
     <div
-      class="toast codex-card-soft t-{t.tone}"
-      role={t.ariaRole}
+      class="toast codex-card-soft t-{toast.tone}"
+      role={toast.ariaRole}
       aria-atomic="true"
     >
       <div class="toast-row">
         <span class="toast-label">
-          {#if t.tone === 'ok'}
-            guardado
-          {:else if t.tone === 'warn'}
-            atención
-          {:else if t.tone === 'error'}
-            error
+          {#if toast.tone === 'ok'}
+            {t('toast_ok')}
+          {:else if toast.tone === 'warn'}
+            {t('toast_warn')}
+          {:else if toast.tone === 'error'}
+            {t('toast_error')}
           {:else}
-            aviso
+            {t('toast_info')}
           {/if}
         </span>
         <button
           type="button"
           class="toast-x"
-          aria-label="Cerrar aviso"
-          onclick={() => dismissToast(t.id)}
+          aria-label={t('toast_close_aria')}
+          onclick={() => dismissToast(toast.id)}
         >
           <Glyph name="Close" size={10} />
         </button>
       </div>
-      <div class="toast-msg">{t.message}</div>
-      {#if t.action}
+      <div class="toast-msg">{toast.message}</div>
+      {#if toast.action}
         <button
           type="button"
           class="toast-act"
           onclick={() => {
-            t.action!.onAction();
-            dismissToast(t.id);
+            toast.action!.onAction();
+            dismissToast(toast.id);
           }}
         >
           <Glyph name="Reset" size={10} />
-          {t.action.label}
+          {toast.action.label}
         </button>
       {/if}
     </div>
   {/each}
   {#if $toasts.length > 4}
-    <div class="toast-more coord">+{$toasts.length - 4} avisos más</div>
+    <div class="toast-more coord">{t('toast_more', { n: String($toasts.length - 4) })}</div>
   {/if}
 </div>
 
 <style>
   .toast-stack {
     position: fixed;
-    left: 14px;
-    width: min(360px, calc(100vw - 28px));
+    left: calc(14px + var(--safe-left));
+    width: min(360px, calc(100vw - 28px - var(--safe-left) - var(--safe-right)));
     display: flex;
     flex-direction: column;
     gap: 8px;
-    z-index: 60; /* below drawers (70) and above map */
+    z-index: var(--z-toast);
     pointer-events: none;
     transition: top 0.3s var(--ease-codex);
   }
@@ -88,7 +94,7 @@
   .toast-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .toast-label {
     font-family: var(--mono);
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--ink-soft);
@@ -104,9 +110,9 @@
     border-radius: 3px;
     line-height: 0;
   }
-  .toast-x:hover, .toast-x:focus-visible { color: var(--ink); background: var(--paper-warm); outline: none; }
+  .toast-x:hover, .toast-x:focus-visible { color: var(--ink); background: var(--paper-warm); }
 
-  .toast-msg { font-family: var(--serif); font-size: 14px; line-height: 1.4; color: var(--ink); margin-top: 2px; }
+  .toast-msg { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(14px * var(--text-scale)); line-height: 1.4; color: var(--ink); margin-top: 2px; }
   .toast-act {
     align-self: flex-start;
     margin-top: 6px;
@@ -116,7 +122,7 @@
     padding: 4px 9px;
     border-radius: 4px;
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     letter-spacing: 0.1em;
     text-transform: uppercase;
     cursor: pointer;
@@ -131,11 +137,15 @@
     border: 1px dashed var(--line);
     border-radius: 999px;
     padding: 2px 10px;
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     pointer-events: none;
   }
 
-  @media (max-width: 640px) {
-    .toast-stack { left: 8px; right: 8px; width: auto; }
+  @media (max-width: 760px) {
+    .toast-stack {
+      left: calc(8px + var(--safe-left));
+      right: calc(8px + var(--safe-right));
+      width: auto;
+    }
   }
 </style>

@@ -64,6 +64,28 @@ export function upsertRule(input: RuleInput): string {
   return id;
 }
 
+export type SharedRulePayload = {
+  entity_a: string;
+  entity_b: string;
+  relationship_type: string;
+  message: string;
+};
+
+/** Import a community-shared rule into the local catalog as a user-owned rule. */
+export function importSharedRule(remote: SharedRulePayload): string {
+  return upsertRule({
+    entity_a: remote.entity_a,
+    entity_b: remote.entity_b,
+    entity_a_kind: 'plant',
+    entity_b_kind: 'plant',
+    relationship: remote.relationship_type as Relationship,
+    trigger_distance_m: null,
+    message: remote.message,
+    source: 'comunidad',
+    is_user_owned: true
+  });
+}
+
 export function retractRule(id: string): void {
   exec('UPDATE rule SET retracted_at = ?, updated_at = ? WHERE id = ?', [nowIso(), nowIso(), id]);
 }

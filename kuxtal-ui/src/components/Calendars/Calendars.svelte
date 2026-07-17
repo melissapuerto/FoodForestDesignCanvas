@@ -1,11 +1,23 @@
 <script lang="ts">
-  import { thunForDate, THUN_LABELS, type ThunDay } from '../../lib/calendars/thun';
-  import { lunarPhaseForDate, PHASE_LABELS, type LunarPhase } from '../../lib/calendars/sinodico';
+  import { thunForDate, thunLabel, thunShort, thunAdvice, type ThunDay } from '../../lib/calendars/thun';
+  import { lunarPhaseForDate, phaseLabel, type LunarPhase } from '../../lib/calendars/sinodico';
   import { mayaForDate } from '../../lib/calendars/maya';
-  import { ANDINO_MARKERS, nextAndinoMarker } from '../../lib/calendars/andino';
+  import { ANDINO_MARKERS, andinoDescription, nextAndinoMarker, andinoMarkerDate } from '../../lib/calendars/andino';
+  import { t } from '../../lib/i18n/index.svelte';
+  import { untrack } from 'svelte';
+  import { localeTag } from '../../lib/utils/dates';
   import { exec, selectAll } from '../../lib/db/sqlite';
   import { dbReady } from '../../lib/stores/appState';
+  import { dialogAlert } from '../../lib/stores/dialog';
   import Glyph from '../../lib/glyphs/Glyph.svelte';
+
+  // Plain-language "why?" behind a calendar recommendation (BIO-05 / EXP).
+  function whyCalendar(which: 'biodynamic' | 'lunar'): void {
+    dialogAlert({
+      title: t('cal_why_title'),
+      body: which === 'biodynamic' ? t('cal_why_biodynamic') : t('cal_why_lunar')
+    });
+  }
 
   type Cal = 'biodinamico' | 'sinodico' | 'maya' | 'andino';
   type View = 'day' | 'week' | 'month' | 'year';
@@ -14,11 +26,18 @@
   let view = $state<View>('week');
   let date = $state(new Date());
   let dateString = $state(toIso(new Date()));
+  // BIO-04: calendars are opt-in. Default everything OFF so the app never pushes
+  // lunar/biodynamic traditions on a user who didn't ask for them; loadPrefs()
+  // restores whatever a returning user previously enabled.
   let enabled = $state<{ thun: boolean; sinodico: boolean; maya: boolean; andino: boolean }>({
-    thun: true, sinodico: true, maya: true, andino: true
+    thun: false, sinodico: false, maya: false, andino: false
   });
+  const activeKey = $derived<keyof typeof enabled>(
+    active === 'biodinamico' ? 'thun' : active === 'sinodico' ? 'sinodico' : active === 'maya' ? 'maya' : 'andino'
+  );
+  const activeEnabled = $derived(enabled[activeKey]);
 
-  dbReady.subscribe((ready) => { if (ready) loadPrefs(); });
+  $effect(() => { if ($dbReady) untrack(loadPrefs); });
 
   function toIso(d: Date): string { return d.toISOString().slice(0, 10); }
   function setDate(): void {
@@ -147,14 +166,14 @@
 
   // ---- Header label ----
   function headerLabel(): string {
-    if (view === 'day') return date.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (view === 'day') return date.toLocaleDateString(localeTag(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     if (view === 'week') {
       const start = startOfWeek(date);
       const end = new Date(start);
       end.setDate(start.getDate() + 6);
-      return `${start.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })} – ${end.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+      return `${start.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short' })} – ${end.toLocaleDateString(localeTag(), { day: 'numeric', month: 'short', year: 'numeric' })}`;
     }
-    if (view === 'month') return date.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' });
+    if (view === 'month') return date.toLocaleDateString(localeTag(), { month: 'long', year: 'numeric' });
     return String(date.getFullYear());
   }
 
@@ -165,28 +184,35 @@
   let andino = $derived(nextAndinoMarker(date));
   let cells = $derived(rangeDates());
 
-  const calendars: Array<{ id: Cal; name: string; sub: string; key: keyof typeof enabled }> = [
-    { id: 'biodinamico', name: 'Biodinámico (Thun)', sub: 'Hoja · Raíz · Flor · Fruto', key: 'thun' },
-    { id: 'maya', name: "Maya · Tzolk'in", sub: 'Cuenta sagrada de 260 días', key: 'maya' },
-    { id: 'andino', name: 'Andino', sub: 'Pachakuti agrícola', key: 'andino' },
-    { id: 'sinodico', name: 'Sinódico lunar', sub: 'Fases de la luna', key: 'sinodico' }
-  ];
+  const calendars: Array<{ id: Cal; name: string; sub: string; key: keyof typeof enabled }> = $derived([
+    { id: 'biodinamico', name: t('cal_tab_thun_name'), sub: t('cal_tab_thun_sub'), key: 'thun' },
+    { id: 'maya', name: t('cal_tab_maya_name'), sub: t('cal_tab_maya_sub'), key: 'maya' },
+    { id: 'andino', name: t('cal_tab_andino_name'), sub: t('cal_tab_andino_sub'), key: 'andino' },
+    { id: 'sinodico', name: t('cal_tab_sinodico_name'), sub: t('cal_tab_sinodico_sub'), key: 'sinodico' }
+  ]);
 
-  const dayHeaders = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+  const THUN_KINDS: ThunDay[] = ['raiz', 'hoja', 'flor', 'fruto'];
 
-  function monthName(m: number): string {
-    return new Date(2024, m - 1, 1).toLocaleDateString('es-CO', { month: 'long' });
+  // Monday-first weekday initials in the active locale.
+  const dayHeaders = $derived.by(() => {
+    const fmt = new Intl.DateTimeFormat(localeTag(), { weekday: 'narrow' });
+    // 2024-01-01 was a Monday.
+    return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(Date.UTC(2024, 0, 1 + i, 12))));
+  });
+
+  function fmtDate(d: Date): string {
+    return d.toLocaleDateString(localeTag(), { day: 'numeric', month: 'long' });
   }
 </script>
 
 <section class="card-warm card">
   <div class="row" style="justify-content: space-between; gap: 8px; flex-wrap: wrap;">
     <div>
-      <div class="label">Cuatro saberes del tiempo</div>
-      <div class="sub">Activa los calendarios y elige una vista (día, semana, mes, año).</div>
+      <h3 class="label">{t('cal_title')}</h3>
+      <div class="sub">{t('cal_sub')}</div>
     </div>
     <div class="row" style="gap: 6px; flex-wrap: wrap;">
-      {#each [{ v: 'day', l: 'Día' }, { v: 'week', l: 'Semana' }, { v: 'month', l: 'Mes' }, { v: 'year', l: 'Año' }] as opt}
+      {#each [{ v: 'day', lk: 'cal_view_day' }, { v: 'week', lk: 'cal_view_week' }, { v: 'month', lk: 'cal_view_month' }, { v: 'year', lk: 'cal_view_year' }] as opt}
         <button
           type="button"
           class="cb-shape"
@@ -194,20 +220,20 @@
           aria-pressed={view === opt.v}
           onclick={() => (view = opt.v as View)}
         >
-          {opt.l}
+          {t(opt.lk as any)}
         </button>
       {/each}
     </div>
   </div>
 
   <div class="row" style="margin-top: 12px; gap: 8px; align-items: center; flex-wrap: wrap;">
-    <button class="btn btn-sm" onclick={() => step(-1)} aria-label="Periodo anterior"><Glyph name="ArrowRight" size={12} /></button>
+    <button class="btn btn-sm" onclick={() => step(-1)} aria-label={t('cal_prev_aria')}><Glyph name="ArrowRight" size={12} /></button>
     <div class="cal-header" style="flex: 1; min-width: 200px; text-align: center;">{headerLabel()}</div>
-    <button class="btn btn-sm" onclick={() => step(1)} aria-label="Periodo siguiente">
+    <button class="btn btn-sm" onclick={() => step(1)} aria-label={t('cal_next_aria')}>
       <span style="display: inline-flex; transform: scaleX(-1);"><Glyph name="ArrowRight" size={12} /></span>
     </button>
-    <button class="btn btn-sm" onclick={goToday}>Hoy</button>
-    <input class="inp" type="date" bind:value={dateString} oninput={setDate} style="max-width: 170px;" aria-label="Saltar a fecha" />
+    <button class="btn btn-sm" onclick={goToday}>{t('cal_today')}</button>
+    <input class="inp" type="date" bind:value={dateString} oninput={setDate} style="max-width: 170px;" aria-label={t('cal_jump_aria')} />
   </div>
 </section>
 
@@ -228,27 +254,39 @@
         <button
           type="button"
           class="chip {isOn ? 'chip-jade' : ''}"
-          aria-label={`${isOn ? 'Desactivar' : 'Activar'} ${c.name}`}
+          aria-label={isOn ? t('cal_deactivate', { name: c.name }) : t('cal_activate', { name: c.name })}
           aria-pressed={isOn}
           onclick={() => toggle(c.key)}
         >
-          {isOn ? 'activo' : 'inactivo'}
+          {isOn ? t('cal_active') : t('cal_inactive')}
         </button>
       </div>
     {/each}
   </aside>
 
   <div class="cal-body">
+    {#if !activeEnabled}
+      <div class="cal-optin">
+        <div class="label">{t('cal_optin_title')}</div>
+        <p class="sub" style="margin-top: 6px;">{t('cal_optin_body')}</p>
+        <button type="button" class="btn btn-accent" style="margin-top: 12px;" onclick={() => toggle(activeKey)}>
+          {t('cal_optin_enable')}
+        </button>
+      </div>
+    {:else}
     {#if active === 'biodinamico'}
       {#if view === 'day'}
-        <div class="label">Hoy · {THUN_LABELS[thun.kind].label}</div>
+        <div class="label">{t('cal_today')} · {thunLabel(thun.kind)}</div>
         <div class="row" style="gap: 14px; align-items: flex-start; margin-top: 8px;">
           <div class="cal-disc" style="background: {THUN_COLOR[thun.kind]};"></div>
           <div>
-            <div style="font-family: var(--serif); font-size: 24px;">{THUN_LABELS[thun.kind].label}</div>
-            <p class="sub" style="font-family: var(--serif); margin-top: 6px;">
-              {THUN_LABELS[thun.kind].advice}
+            <div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(24px * var(--text-scale));">{thunLabel(thun.kind)}</div>
+            <p class="sub" style="font-family: var(--serif); font-weight: var(--display-weight); margin-top: 6px;">
+              {thunAdvice(thun.kind)}
             </p>
+            <button type="button" class="cal-why" onclick={() => whyCalendar('biodynamic')}>
+              <Glyph name="Help" size={12} /> {t('cal_why_btn')}
+            </button>
           </div>
         </div>
       {:else if view === 'week'}
@@ -263,10 +301,11 @@
               class:selected={sameDay(d, date)}
               style="--accent: {THUN_COLOR[k]};"
               onclick={() => { date = d; dateString = toIso(d); view = 'day'; }}
-              aria-label={`${d.toLocaleDateString('es-CO')} — ${THUN_LABELS[k].label}`}
+              aria-current={sameDay(d, new Date()) ? 'date' : undefined}
+              aria-label={`${d.toLocaleDateString(localeTag())} — ${thunLabel(k)}`}
             >
               <span class="dn">{d.getDate()}</span>
-              <span class="dl">{THUN_LABELS[k].label.replace('Día ', '')}</span>
+              <span class="dl">{thunShort(k)}</span>
             </button>
           {/each}
         </div>
@@ -284,15 +323,16 @@
               class:dim={!inMonth}
               style="--accent: {THUN_COLOR[k]};"
               onclick={() => { date = d; dateString = toIso(d); view = 'day'; }}
-              aria-label={`${d.toLocaleDateString('es-CO')} — ${THUN_LABELS[k].label}`}
+              aria-current={sameDay(d, new Date()) ? 'date' : undefined}
+              aria-label={`${d.toLocaleDateString(localeTag())} — ${thunLabel(k)}`}
             >
               <span class="dn">{d.getDate()}</span>
             </button>
           {/each}
         </div>
         <div class="legend">
-          {#each Object.entries(THUN_LABELS) as [k, v]}
-            <span class="lg"><span class="lg-dot" style="background: {THUN_COLOR[k as ThunDay]}"></span> {v.label}</span>
+          {#each THUN_KINDS as k}
+            <span class="lg"><span class="lg-dot" style="background: {THUN_COLOR[k]}"></span> {thunLabel(k)}</span>
           {/each}
         </div>
       {:else}
@@ -305,8 +345,8 @@
               style="--accent: {THUN_COLOR[k]};"
               onclick={() => { date = d; dateString = toIso(d); view = 'month'; }}
             >
-              <div class="ym">{d.toLocaleDateString('es-CO', { month: 'long' })}</div>
-              <div class="yk">día central · {THUN_LABELS[k].label}</div>
+              <div class="ym">{d.toLocaleDateString(localeTag(), { month: 'long' })}</div>
+              <div class="yk">{t('cal_central_day')} · {thunLabel(k)}</div>
             </button>
           {/each}
         </div>
@@ -314,14 +354,17 @@
 
     {:else if active === 'sinodico'}
       {#if view === 'day'}
-        <div class="label">Hoy · {PHASE_LABELS[phase.phase]}</div>
+        <div class="label">{t('cal_today')} · {phaseLabel(phase.phase)}</div>
         <div class="row" style="gap: 14px; align-items: flex-start; margin-top: 8px;">
           <div class="cal-disc" style="background: {PHASE_COLOR[phase.phase]};"></div>
           <div>
-            <div style="font-family: var(--serif); font-size: 24px;">{PHASE_LABELS[phase.phase]}</div>
+            <div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(24px * var(--text-scale));">{phaseLabel(phase.phase)}</div>
             <div class="coord" style="margin-top: 6px;">
-              edad lunar {phase.ageDays.toFixed(1)} días · iluminación {(phase.illumination * 100).toFixed(0)}%
+              {t('cal_lunar_age', { age: phase.ageDays.toFixed(1), pct: (phase.illumination * 100).toFixed(0) })}
             </div>
+            <button type="button" class="cal-why" onclick={() => whyCalendar('lunar')}>
+              <Glyph name="Help" size={12} /> {t('cal_why_btn')}
+            </button>
           </div>
         </div>
       {:else if view === 'week' || view === 'month'}
@@ -339,7 +382,8 @@
               class:dim={!inMonth}
               style="--accent: {PHASE_COLOR[ph.phase]};"
               onclick={() => { date = d; dateString = toIso(d); view = 'day'; }}
-              aria-label={`${d.toLocaleDateString('es-CO')} — ${PHASE_LABELS[ph.phase]}`}
+              aria-current={sameDay(d, new Date()) ? 'date' : undefined}
+              aria-label={`${d.toLocaleDateString(localeTag())} — ${phaseLabel(ph.phase)}`}
             >
               <span class="dn">{d.getDate()}</span>
               {#if view === 'week'}
@@ -358,8 +402,8 @@
               style="--accent: {PHASE_COLOR[ph.phase]};"
               onclick={() => { date = d; dateString = toIso(d); view = 'month'; }}
             >
-              <div class="ym">{d.toLocaleDateString('es-CO', { month: 'long' })}</div>
-              <div class="yk">día central · {PHASE_LABELS[ph.phase]}</div>
+              <div class="ym">{d.toLocaleDateString(localeTag(), { month: 'long' })}</div>
+              <div class="yk">{t('cal_central_day')} · {phaseLabel(ph.phase)}</div>
             </button>
           {/each}
         </div>
@@ -367,10 +411,10 @@
 
     {:else if active === 'maya'}
       {#if view === 'day'}
-        <div class="label">Hoy</div>
+        <div class="label">{t('cal_today')}</div>
         <div class="card" style="margin-top: 8px;">
-          <div style="font-family: var(--serif); font-size: 22px;"><b>Tzolk'in:</b> {maya.tzolkin.number} {maya.tzolkin.day}</div>
-          <div style="font-family: var(--serif); font-size: 18px; margin-top: 6px;"><b>Haab:</b> {maya.haab.day} {maya.haab.month}</div>
+          <div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(22px * var(--text-scale));"><b>Tzolk'in:</b> {maya.tzolkin.number} {maya.tzolkin.day}</div>
+          <div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(18px * var(--text-scale)); margin-top: 6px;"><b>Haab:</b> {maya.haab.day} {maya.haab.month}</div>
         </div>
       {:else}
         <div class="day-grid {view === 'month' ? 'month' : view === 'week' ? 'week' : ''}">
@@ -391,7 +435,7 @@
               onclick={() => { date = d; dateString = toIso(d); view = view === 'year' ? 'month' : 'day'; }}
             >
               {#if view === 'year'}
-                <div class="ym">{d.toLocaleDateString('es-CO', { month: 'long' })}</div>
+                <div class="ym">{d.toLocaleDateString(localeTag(), { month: 'long' })}</div>
                 <div class="yk">{m.tzolkin.number} {m.tzolkin.day}</div>
               {:else}
                 <span class="dn">{d.getDate()}</span>
@@ -403,25 +447,29 @@
       {/if}
 
     {:else if active === 'andino'}
-      <div class="label">Próximo marcador</div>
+      <div class="label">{t('cal_next_marker')}</div>
       <div class="card" style="margin-top: 8px;">
-        <div style="font-family: var(--serif); font-size: 22px;">{andino.marker.name}</div>
-        <div class="coord" style="margin-top: 6px;">en {andino.daysUntil} días</div>
-        <p class="sub" style="margin-top: 8px; font-family: var(--serif);">{andino.marker.description}</p>
+        <div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(22px * var(--text-scale));">{andino.marker.name}</div>
+        <div class="coord" style="margin-top: 6px;">
+          {t('cal_days_until', { date: fmtDate(andino.date), n: String(andino.daysUntil) })}
+        </div>
+        <p class="sub" style="margin-top: 8px; font-family: var(--serif); font-weight: var(--display-weight);">{andinoDescription(andino.marker)}</p>
       </div>
       <div class="weave" style="margin: 14px 0;" aria-hidden="true"></div>
-      <div class="label">Marcadores del año</div>
+      <div class="label">{t('cal_year_markers', { year: String(date.getFullYear()) })}</div>
       <div class="andino-list">
         {#each ANDINO_MARKERS as m}
+          {@const markerDate = andinoMarkerDate(m, date.getFullYear())}
           <div class="andino-row">
-            <span class="chip chip-ocre">{m.approxDate.day} {monthName(m.approxDate.month)}</span>
+            <span class="chip chip-ocre">{fmtDate(markerDate)}</span>
             <div>
-              <div style="font-family: var(--serif); font-size: 17px;">{m.name}</div>
-              <div class="sub">{m.description}</div>
+              <div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(17px * var(--text-scale));">{m.name}</div>
+              <div class="sub">{andinoDescription(m)}</div>
             </div>
           </div>
         {/each}
       </div>
+    {/if}
     {/if}
   </div>
 </section>
@@ -448,18 +496,29 @@
     background: none; border: none; padding: 0; cursor: pointer; color: var(--ink);
     display: flex; flex-direction: column; gap: 2px; min-width: 0; text-align: left; flex: 1;
   }
-  .cal-tab-name { font-family: var(--serif); font-size: 16px; }
+  .cal-tab-name { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(16px * var(--text-scale)); }
 
   .cal-body { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 16px; min-height: 220px; }
   .cal-disc { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 3px var(--paper), 0 0 0 4px var(--line); }
+  .cal-why {
+    margin-top: 8px;
+    display: inline-flex; align-items: center; gap: 5px;
+    background: transparent;
+    border: 1px solid var(--line-strong);
+    color: var(--ocre-deep);
+    border-radius: 999px;
+    font-family: var(--mono); font-size: calc(10px * var(--text-scale)); letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 5px 12px; min-height: 32px; cursor: pointer;
+  }
+  .cal-why:hover { background: var(--paper-warm); }
 
-  .cal-header { font-family: var(--serif); font-size: 18px; text-transform: capitalize; }
+  .cal-header { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(18px * var(--text-scale)); text-transform: capitalize; }
 
   .cb-shape {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 4px 9px; border: 1px solid var(--line); background: var(--paper);
     color: var(--ink-soft); border-radius: 4px;
-    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    font-family: var(--mono); font-size: calc(10px * var(--text-scale)); letter-spacing: 0.08em; text-transform: uppercase;
     cursor: pointer;
   }
   .cb-shape.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -469,7 +528,7 @@
   .dh {
     text-align: center;
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     color: var(--ink-soft);
     text-transform: uppercase;
   }
@@ -491,8 +550,8 @@
   .dcell.today { box-shadow: 0 0 0 2px var(--ocre) inset; }
   .dcell.selected { background: var(--paper); border-color: var(--ink); }
   .dcell.dim { opacity: 0.45; }
-  .dn { font-family: var(--serif); font-size: 16px; line-height: 1; }
-  .dl { font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+  .dn { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(16px * var(--text-scale)); line-height: 1; }
+  .dl { font-family: var(--mono); font-size: calc(9px * var(--text-scale)); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
 
   .year-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
   .ycell {
@@ -506,11 +565,11 @@
     text-align: left;
   }
   .ycell:hover { background: var(--paper); }
-  .ym { font-family: var(--serif); font-size: 16px; text-transform: capitalize; line-height: 1.1; }
-  .yk { font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); margin-top: 4px; }
+  .ym { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(16px * var(--text-scale)); text-transform: capitalize; line-height: 1.1; }
+  .yk { font-family: var(--mono); font-size: calc(9px * var(--text-scale)); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); margin-top: 4px; }
 
   .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
-  .lg { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-soft); }
+  .lg { display: inline-flex; align-items: center; gap: 6px; font-size: calc(11px * var(--text-scale)); color: var(--ink-soft); }
   .lg-dot { width: 10px; height: 10px; border-radius: 50%; }
 
   .andino-list { display: flex; flex-direction: column; gap: 8px; }

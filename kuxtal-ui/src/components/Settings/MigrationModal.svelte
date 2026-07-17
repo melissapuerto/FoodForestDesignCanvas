@@ -6,6 +6,7 @@
   import { migrateCoordinates } from '../../lib/map/migrate';
   import Glyph from '../../lib/glyphs/Glyph.svelte';
   import LocationPicker from '../Layout/LocationPicker.svelte';
+  import { t } from '../../lib/i18n/index.svelte';
 
   let {
     onClose
@@ -44,16 +45,16 @@
 
   async function migrateToBlank(): Promise<void> {
     const ok = await dialogConfirm({
-      title: '¿Migrar a Lienzo en Blanco?',
-      body: 'Tus dibujos y plantas se mantendrán, pero perderán su referencia geográfica en el mundo real. Podrás colocar coordenadas nuevamente después.',
-      confirmLabel: 'Sí, migrar a lienzo en blanco'
+      title: t('migration_to_blank_title'),
+      body: t('migration_to_blank_body'),
+      confirmLabel: t('migration_to_blank_btn')
     });
     if (!ok) return;
 
     // Center of blank canvas is 0, 0
     migrateCoordinates(landId, { lat: oldLat, lng: oldLng }, { lat: 0, lng: 0 });
     reloadFromDb(landId);
-    showToast({ message: 'Migrado a lienzo en blanco exitosamente.', tone: 'ok' });
+    showToast({ message: t('migration_to_blank_success'), tone: 'ok' });
     onClose();
   }
 
@@ -61,19 +62,19 @@
     const newLat = parseFloat(newLatStr);
     const newLng = parseFloat(newLngStr);
     if (isNaN(newLat) || isNaN(newLng)) {
-      showToast({ message: 'Coordenadas inválidas.', tone: 'error' });
+      showToast({ message: t('migration_invalid_coords'), tone: 'error' });
       return;
     }
     const ok = await dialogConfirm({
-      title: '¿Migrar a Mapa con Coordenadas?',
-      body: 'Tus dibujos actuales serán movidos al centro de la nueva ubicación que seleccionaste.',
-      confirmLabel: 'Sí, migrar a mapa real'
+      title: t('migration_to_real_title'),
+      body: t('migration_to_real_body'),
+      confirmLabel: t('migration_to_real_btn')
     });
     if (!ok) return;
 
     migrateCoordinates(landId, { lat: 0, lng: 0 }, { lat: newLat, lng: newLng });
     reloadFromDb(landId);
-    showToast({ message: 'Migrado a mapa con coordenadas exitosamente.', tone: 'ok' });
+    showToast({ message: t('migration_to_real_success'), tone: 'ok' });
     onClose();
   }
 </script>
@@ -81,7 +82,7 @@
 <div class="modal-overlay">
   <div class="modal-card card">
     <div class="label" style="display:flex; justify-content:space-between; align-items:center;">
-      <span>Migrar tipo de lienzo</span>
+      <span>{t('migration_title')}</span>
       <button class="btn btn-sm btn-ghost" onclick={onClose}><Glyph name="Close" size={14} /></button>
     </div>
     
@@ -89,15 +90,15 @@
 
     <div class="info-block">
       {#if hasRealCoordinates}
-        <p>Actualmente tu lienzo está anclado a coordenadas reales: <b>{oldLat.toFixed(4)}, {oldLng.toFixed(4)}</b>.</p>
-        <p style="margin-top: 8px;">Si migras a Lienzo en Blanco, podrás dibujar sin depender de un mapa del mundo real. Todos tus dibujos actuales se conservarán.</p>
-        
+        <p>{t('migration_anchored_desc', { coords: `${oldLat.toFixed(4)}, ${oldLng.toFixed(4)}` })}</p>
+        <p style="margin-top: 8px;">{t('migration_blank_canvas_desc')}</p>
+
         <button class="btn btn-danger" style="margin-top: 16px; width: 100%; justify-content: center;" onclick={migrateToBlank}>
-          Migrar a Lienzo en Blanco
+          {t('migration_btn_blank')}
         </button>
       {:else}
-        <p>Actualmente tu lienzo está en blanco (sin ancla geográfica).</p>
-        <p style="margin-top: 8px;">Para migrar a un mapa real, busca tu finca en el mapa o arrastra el marcador rojo. Todos tus dibujos actuales serán centrados en la nueva ubicación.</p>
+        <p>{t('migration_no_coords_desc')}</p>
+        <p style="margin-top: 8px;">{t('migration_to_real_hint')}</p>
         
         <div style="margin-top: 16px; height: 300px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;">
           <LocationPicker
@@ -107,7 +108,7 @@
         </div>
         
         <button class="btn btn-primary" style="margin-top: 16px; width: 100%; justify-content: center;" onclick={migrateToReal}>
-          Migrar a Mapa (con estas coordenadas)
+          {t('migration_btn_real')}
         </button>
       {/if}
     </div>
@@ -138,8 +139,8 @@
     to { opacity: 1; transform: scale(1) translateY(0); }
   }
   .info-block {
-    font-family: var(--serif);
-    font-size: 15px;
+    font-family: var(--serif); font-weight: var(--display-weight);
+    font-size: calc(15px * var(--text-scale));
     line-height: 1.5;
     color: var(--ink);
   }

@@ -6,18 +6,21 @@
   import { showToast } from '../../lib/stores/toast';
   import { dialogConfirm } from '../../lib/stores/dialog';
   import Glyph from '../../lib/glyphs/Glyph.svelte';
+  import { t } from '../../lib/i18n/index.svelte';
+  import { untrack } from 'svelte';
+  import { formatDate } from '../../lib/utils/dates';
 
   let items = $state<ResourceRow[]>([]);
   let editing = $state<Partial<ResourceRow> | null>(null);
 
-  dbReady.subscribe((ready) => { if (ready) refresh(); });
+  $effect(() => { if ($dbReady) untrack(refresh); });
 
   function refresh(): void { items = listResources(); }
 
   function newItem(): void { editing = { name: '', category: 'Insumo', quantity: 0, unit: 'kg', notes: '' }; }
 
   function save(): void {
-    if (!editing?.name?.trim()) { showToast({ message: 'Escribe un nombre antes de guardar.', tone: 'warn' }); return; }
+    if (!editing?.name?.trim()) { showToast({ message: t('stock_err_name'), tone: 'warn' }); return; }
     const isNew = !editing.id;
     upsertResource({
       id: editing.id,
@@ -29,19 +32,19 @@
     });
     editing = null;
     refresh();
-    showToast({ message: isNew ? 'Recurso agregado.' : 'Recurso actualizado.', tone: 'ok' });
+    showToast({ message: isNew ? t('stock_added') : t('stock_updated'), tone: 'ok' });
   }
 
   async function askDelete(item: ResourceRow): Promise<void> {
     const ok = await dialogConfirm({
-      title: `¿Borrar "${item.name}"?`,
-      body: 'Esta acción no se puede deshacer.',
-      confirmLabel: 'Borrar', danger: true
+      title: t('stock_delete_confirm', { name: item.name }),
+      body: t('stock_delete_body'),
+      confirmLabel: t('common_delete'), danger: true
     });
     if (!ok) return;
     deleteResource(item.id);
     refresh();
-    showToast({ message: 'Recurso borrado.', tone: 'ok' });
+    showToast({ message: t('stock_deleted'), tone: 'ok' });
   }
 
   let groups = $derived.by(() => {
@@ -58,37 +61,37 @@
 <section class="card-warm card">
   <div class="row" style="justify-content: space-between; align-items: center;">
     <div>
-      <div class="label">Inventario</div>
-      <div class="sub">Semillas, herramientas, abonos y materiales.</div>
+      <div class="label">{t('stock_title')}</div>
+      <div class="sub">{t('stock_sub')}</div>
     </div>
-    <button class="btn btn-primary" onclick={newItem}><Glyph name="Plus" size={14} /> Nuevo</button>
+    <button class="btn btn-primary" onclick={newItem}><Glyph name="Plus" size={14} /> {t('stock_new')}</button>
   </div>
 </section>
 
 {#if editing}
   <section class="card">
-    <div class="label">{editing.id ? 'Editar recurso' : 'Nuevo recurso'}</div>
+    <div class="label">{editing.id ? t('stock_edit_title') : t('stock_new_title')}</div>
     <div class="weave" style="margin: 8px 0;" aria-hidden="true"></div>
-    <div class="field-row"><label for="rName">Nombre</label>
+    <div class="field-row"><label for="rName">{t('stock_name_label')}</label>
       <input id="rName" class="inp" bind:value={editing.name} />
     </div>
     <div class="row" style="gap: 8px;">
-      <div class="field-row" style="flex: 1;"><label for="rCat">Categoría</label>
-        <input id="rCat" class="inp" bind:value={editing.category} placeholder="Semilla, herramienta, abono..." />
+      <div class="field-row" style="flex: 1;"><label for="rCat">{t('stock_category_label')}</label>
+        <input id="rCat" class="inp" bind:value={editing.category} placeholder={t('stock_category_placeholder')} />
       </div>
-      <div class="field-row" style="width: 110px;"><label for="rUnit">Unidad</label>
-        <input id="rUnit" class="inp" bind:value={editing.unit} placeholder="kg, l, u" />
+      <div class="field-row" style="width: 110px;"><label for="rUnit">{t('stock_unit_label')}</label>
+        <input id="rUnit" class="inp" bind:value={editing.unit} placeholder={t('stock_unit_placeholder')} />
       </div>
     </div>
-    <div class="field-row"><label for="rQty">Cantidad</label>
+    <div class="field-row"><label for="rQty">{t('stock_qty_label')}</label>
       <input id="rQty" class="inp" type="number" step="0.1" bind:value={editing.quantity} />
     </div>
-    <div class="field-row"><label for="rNotes">Notas</label>
+    <div class="field-row"><label for="rNotes">{t('stock_notes_label')}</label>
       <textarea id="rNotes" class="inp" rows="2" bind:value={editing.notes}></textarea>
     </div>
     <div class="row" style="margin-top: 10px;">
-      <button class="btn btn-primary" onclick={save}><Glyph name="Check" size={14} /> Guardar</button>
-      <button class="btn" onclick={() => (editing = null)}>Cancelar</button>
+      <button class="btn btn-primary" onclick={save}><Glyph name="Check" size={14} /> {t('stock_save')}</button>
+      <button class="btn" onclick={() => (editing = null)}>{t('stock_cancel')}</button>
     </div>
   </section>
 {/if}
@@ -97,25 +100,25 @@
   <section class="cat-block">
     <div class="cat-head">
       <span class="cat-name">{cat}</span>
-      <span class="coord">{list.length} {list.length === 1 ? 'recurso' : 'recursos'}</span>
+      <span class="coord">{list.length === 1 ? t('stock_count', { n: String(list.length) }) : t('stock_count_plural', { n: String(list.length) })}</span>
     </div>
     <div class="list">
       {#each list as it}
         <article class="list-item" style="justify-content: space-between;">
           <div>
-            <div style="font-family: var(--serif); font-size: 16px;">{it.name}</div>
+            <div style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(16px * var(--text-scale));">{it.name}</div>
             <div class="coord">
-              {it.quantity} {it.unit ?? ''} · actualizado {new Date(it.last_updated).toLocaleDateString('es-CO')}
+              {it.quantity} {it.unit ?? ''} · {t('stock_updated_on', { date: formatDate(it.last_updated) })}
             </div>
             {#if it.notes}
               <div class="sub" style="margin-top: 4px;">{it.notes}</div>
             {/if}
           </div>
           <div class="row" style="gap: 4px;">
-            <button class="btn btn-sm" aria-label={`Restar uno de ${it.name}`} onclick={() => { adjustQuantity(it.id, -1); refresh(); }}>−1</button>
-            <button class="btn btn-sm" aria-label={`Sumar uno a ${it.name}`} onclick={() => { adjustQuantity(it.id, 1); refresh(); }}>+1</button>
-            <button class="btn btn-sm" onclick={() => (editing = { ...it })}>Editar</button>
-            <button class="btn btn-danger btn-sm" aria-label={`Borrar ${it.name}`} onclick={() => askDelete(it)}><Glyph name="Trash" size={12} /></button>
+            <button class="btn btn-sm" aria-label={t('stock_subtract_aria', { name: it.name })} onclick={() => { adjustQuantity(it.id, -1); refresh(); }}>−1</button>
+            <button class="btn btn-sm" aria-label={t('stock_add_aria', { name: it.name })} onclick={() => { adjustQuantity(it.id, 1); refresh(); }}>+1</button>
+            <button class="btn btn-sm" aria-label={t('stock_edit_aria', { name: it.name })} onclick={() => (editing = { ...it })}>{t('stock_edit_btn')}</button>
+            <button class="btn btn-danger btn-sm" aria-label={t('stock_delete_aria', { name: it.name })} onclick={() => askDelete(it)}><Glyph name="Trash" size={12} /></button>
           </div>
         </article>
       {/each}
@@ -123,10 +126,10 @@
   </section>
 {:else}
   <div class="empty">
-    <Glyph name="Box" size={28} decorative={false} title="Sin recursos" />
-    <div style="margin-top: 8px;">Sin recursos registrados.</div>
+    <Glyph name="Box" size={28} decorative={false} title={t('a11y_stock_empty')} />
+    <div style="margin-top: 8px;">{t('stock_empty')}</div>
     <button class="btn btn-sm btn-accent" style="margin-top: 10px;" onclick={newItem}>
-      <Glyph name="Plus" size={12} /> Agregar el primero
+      <Glyph name="Plus" size={12} /> {t('stock_add_first')}
     </button>
   </div>
 {/each}
@@ -134,5 +137,5 @@
 <style>
   .cat-block { display: flex; flex-direction: column; gap: 8px; }
   .cat-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px; }
-  .cat-name { font-family: var(--serif); font-size: 18px; }
+  .cat-name { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(18px * var(--text-scale)); }
 </style>

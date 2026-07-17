@@ -2,27 +2,14 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 
-const crossOriginIsolation = {
-  name: 'cross-origin-isolation',
-  configureServer(server: any) {
-    server.middlewares.use((_req: any, res: any, next: any) => {
-      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-      res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-      next();
-    });
-  },
-  configurePreviewServer(server: any) {
-    server.middlewares.use((_req: any, res: any, next: any) => {
-      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-      res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-      next();
-    });
-  }
-};
+// NOTE: No COOP/COEP cross-origin isolation here. The SQLite persistence layer
+// uses the OPFS SAHPool VFS (see lib/db/sqlite.ts), which runs on the main
+// thread and does NOT need SharedArrayBuffer / cross-origin isolation. Setting
+// `Cross-Origin-Embedder-Policy: require-corp` would block the cross-origin map
+// tiles and web fonts (breaking the offline-first map) for no benefit.
 
 export default defineConfig({
   plugins: [
-    crossOriginIsolation,
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -35,7 +22,6 @@ export default defineConfig({
         theme_color: '#3B2F1E',
         background_color: '#FFF9F0',
         display: 'standalone',
-        orientation: 'portrait',
         start_url: '/',
         scope: '/',
         lang: 'es',
@@ -80,11 +66,5 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: true
-  },
-  server: {
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp'
-    }
   }
 });

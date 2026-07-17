@@ -1,0 +1,161 @@
+/* ============================================
+   Chaac guided tour — codex theme for driver.js
+   Chaac (the Maya rain deity from the favicon) guides the user through the
+   canvas. These overrides restyle driver.js popovers to match the códice look.
+   ============================================ */
+
+/* Dim overlay tuned to the tierra palette */
+.driver-overlay,
+svg.driver-overlay {
+  /* color handled via driver config overlayColor; nothing needed here */
+}
+
+/* ---- Popover shell ---- */
+.driver-popover.chaac-popover {
+  background: var(--paper, #f2ede0);
+  color: var(--ink, #3b2f1e);
+  border: 1.5px solid var(--ink, #3b2f1e);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 4px var(--paper, #f2ede0),
+    0 0 0 5px oklch(0.55 0.12 50 / 0.4),
+    0 16px 44px oklch(0.2 0.04 60 / 0.24);
+  max-width: 328px;
+  padding: 16px 18px 14px;
+  font-family: var(--sans, system-ui, sans-serif);
+}
+
+/* ---- Chaac avatar peeking from the title ---- */
+.driver-popover.chaac-popover .driver-popover-title {
+  position: relative;
+  font-family: var(--serif, Georgia, serif);
+  font-weight: 400;
+  font-size: calc(19px * var(--text-scale));
+  line-height: 1.2;
+  color: var(--ink, #3b2f1e);
+  margin: 0 0 4px;
+  padding-left: 54px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.driver-popover.chaac-popover .driver-popover-title::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  background: url("/icons/chaac-guide.png") center / contain no-repeat;
+  filter: drop-shadow(0 1px 2px oklch(0.2 0.04 60 / 0.25));
+}
+
+/* Subtle step-fret rule under the title, echoing the in-app greca */
+.driver-popover.chaac-popover .driver-popover-title::after {
+  content: "";
+  position: absolute;
+  left: 54px;
+  right: 0;
+  bottom: -3px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--ocre, #b5723f), transparent);
+  opacity: 0.5;
+}
+
+.driver-popover.chaac-popover .driver-popover-description {
+  font-family: var(--serif, Georgia, serif);
+  font-size: calc(14px * var(--text-scale));
+  line-height: 1.5;
+  color: var(--ink-soft, #6b5340);
+  margin: 10px 0 0;
+}
+
+/* ---- Footer: progress + nav buttons ---- */
+.driver-popover.chaac-popover .driver-popover-footer {
+  margin-top: 14px;
+  gap: 8px;
+}
+.driver-popover.chaac-popover .driver-popover-progress-text {
+  font-family: var(--mono, monospace);
+  font-size: calc(10px * var(--text-scale));
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft, #6b5340);
+}
+.driver-popover.chaac-popover .driver-popover-navigation-btns {
+  gap: 8px;
+}
+.driver-popover.chaac-popover .driver-popover-navigation-btns button,
+.driver-popover.chaac-popover .driver-popover-prev-btn,
+.driver-popover.chaac-popover .driver-popover-next-btn {
+  all: unset;
+  box-sizing: border-box;
+  font-family: var(--sans, system-ui, sans-serif);
+  font-size: calc(13px * var(--text-scale));
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong, #b9a88a);
+  background: var(--paper, #f2ede0);
+  color: var(--ink, #3b2f1e);
+  padding: 9px 16px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-shadow: none;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.driver-popover.chaac-popover .driver-popover-navigation-btns button:hover {
+  background: var(--paper-warm, #e6ddc8);
+  transform: translateY(-1px);
+}
+/* "Next" is the primary action */
+.driver-popover.chaac-popover .driver-popover-next-btn {
+  background: var(--ocre, #b5723f);
+  color: var(--paper, #f9f6ee);
+  border-color: var(--ocre-deep, #8a5226);
+}
+.driver-popover.chaac-popover .driver-popover-next-btn:hover {
+  background: var(--ocre-deep, #8a5226) !important;
+}
+.driver-popover.chaac-popover .driver-popover-btn-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* ---- Close (×) ---- */
+.driver-popover.chaac-popover .driver-popover-close-btn {
+  color: var(--ink-soft, #6b5340);
+  width: 36px;
+  height: 36px;
+  font-size: calc(22px * var(--text-scale));
+  line-height: 36px;
+  transition: color 0.15s ease;
+}
+.driver-popover.chaac-popover .driver-popover-close-btn:hover {
+  color: var(--ink, #3b2f1e);
+}
+
+/* ---- Arrow recoloured from white to paper ---- */
+.driver-popover.chaac-popover .driver-popover-arrow-side-left { border-left-color: var(--paper, #f2ede0); }
+.driver-popover.chaac-popover .driver-popover-arrow-side-right { border-right-color: var(--paper, #f2ede0); }
+.driver-popover.chaac-popover .driver-popover-arrow-side-top { border-top-color: var(--paper, #f2ede0); }
+.driver-popover.chaac-popover .driver-popover-arrow-side-bottom { border-bottom-color: var(--paper, #f2ede0); }
+
+/* Respect reduced-motion: driver.js animates the stage; keep it calm */
+@media (prefers-reduced-motion: reduce) {
+  .driver-popover.chaac-popover { animation: none !important; }
+}
+
+/* Small screens: keep the popover within the viewport gutters */
+@media (max-width: 520px) {
+  .driver-popover.chaac-popover {
+    max-width: calc(100vw - 24px);
+    padding: 14px 14px 12px;
+  }
+  .driver-popover.chaac-popover .driver-popover-title { font-size: calc(17px * var(--text-scale)); }
+}

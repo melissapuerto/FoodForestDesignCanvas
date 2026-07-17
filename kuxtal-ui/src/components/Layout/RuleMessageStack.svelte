@@ -1,16 +1,17 @@
 <script lang="ts">
   import { ruleMessages, dismissCurrentRuleMessage, clearRuleMessages } from '../../lib/stores/ruleMessages';
   import Glyph from '../../lib/glyphs/Glyph.svelte';
+  import { t } from '../../lib/i18n/index.svelte';
 
   let current = $derived($ruleMessages[0] ?? null);
   let queued = $derived(Math.max(0, $ruleMessages.length - 1));
 
   $effect(() => {
     if (current) {
-      const t = setTimeout(() => {
+      const tid = setTimeout(() => {
         dismissCurrentRuleMessage();
       }, 8000);
-      return () => clearTimeout(t);
+      return () => clearTimeout(tid);
     }
   });
 </script>
@@ -25,23 +26,23 @@
     <header class="rmsg-head">
       <span class="rmsg-label">
         {#if current.tone === 'warn'}
-          cuidado · incompatible
+          {t('rule_incompatible')}
         {:else if current.tone === 'block'}
-          bloqueado
+          {t('rule_blocked')}
         {:else if current.tone === 'help'}
-          compañera
+          {t('rule_companion')}
         {:else}
-          aviso
+          {t('rule_notice')}
         {/if}
       </span>
       <div class="rmsg-actions">
         {#if queued > 0}
           <span class="rmsg-count">+{queued}</span>
-          <button type="button" class="rmsg-btn" onclick={dismissCurrentRuleMessage} aria-label="Siguiente aviso">
-            <Glyph name="ArrowRight" size={12} /> Siguiente
+          <button type="button" class="rmsg-btn" onclick={dismissCurrentRuleMessage} aria-label={t('rule_next_aria')}>
+            <Glyph name="ArrowRight" size={12} />
           </button>
         {/if}
-        <button type="button" class="rmsg-x" onclick={() => clearRuleMessages()} aria-label="Cerrar todos">
+        <button type="button" class="rmsg-x" onclick={() => clearRuleMessages()} aria-label={t('rule_close_all_aria')}>
           <Glyph name="Close" size={12} />
         </button>
       </div>
@@ -61,9 +62,10 @@
 <style>
   .rmsg-stack {
     position: absolute;
-    top: 70px;
-    left: 14px;
-    z-index: 11;
+    top: calc(var(--topbar-h, 64px) + 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-canvas-rail);
     width: min(360px, calc(100vw - 28px));
     padding: 10px 12px;
     border-left: 4px solid var(--tone, var(--ocre));
@@ -80,7 +82,7 @@
   }
   .rmsg-label {
     font-family: var(--mono);
-    font-size: 9px;
+    font-size: calc(9px * var(--text-scale));
     letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--tone, var(--ocre));
@@ -88,7 +90,7 @@
   .rmsg-actions { display: inline-flex; align-items: center; gap: 6px; }
   .rmsg-count {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     color: var(--ink-soft);
     background: var(--paper-warm);
     border: 1px solid var(--line);
@@ -102,7 +104,7 @@
     padding: 4px 8px;
     border-radius: 4px;
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: calc(10px * var(--text-scale));
     letter-spacing: 0.1em;
     text-transform: uppercase;
     cursor: pointer;
@@ -120,7 +122,7 @@
     border-radius: 4px;
   }
   .rmsg-x:hover { color: var(--ink); background: var(--paper-warm); }
-  .rmsg-title { font-family: var(--serif); font-size: 17px; line-height: 1.25; color: var(--ink); margin-top: 2px; }
+  .rmsg-title { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(17px * var(--text-scale)); line-height: 1.25; color: var(--ink); margin-top: 2px; }
   .rmsg-lines {
     list-style: none;
     padding: 0;
@@ -128,17 +130,18 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    font-family: var(--serif);
-    font-size: 13px;
+    font-family: var(--serif); font-weight: var(--display-weight);
+    font-size: calc(13px * var(--text-scale));
     line-height: 1.45;
     color: var(--ink-soft);
   }
 
-  @media (max-width: 640px) {
+  @media (max-width: 760px) {
     .rmsg-stack {
-      top: 64px;
-      left: 8px;
-      right: 8px;
+      top: calc(var(--topbar-h, 64px) + 12px);
+      left: calc(8px + var(--safe-left));
+      right: calc(8px + var(--safe-right));
+      transform: none;
       width: auto;
     }
   }
