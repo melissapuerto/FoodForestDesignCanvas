@@ -24,7 +24,14 @@ jobs:
         run: npm run lint
       - name: Unit + a11y tests
         run: npm test
+      - name: Release ethics gate (ETHICAL_CONSTRAINTS walk)
+        run: npm run ethics-gate
       - name: Build
         run: npx vite build
       - name: Bundle budget (first-paint ≤ 100 KB gz)
         run: npm run budget
+      - name: Lighthouse (perf / a11y ≥ 0.90 / PWA)
+        run: npm run lighthouse
+      - name: Energy + SCI baseline (non-gating; RAPL runner recommended)
+        run: pip install codecarbon --quiet && npm run energy
+        continue-on-error: true

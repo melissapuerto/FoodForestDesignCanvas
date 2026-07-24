@@ -39,7 +39,7 @@
 
   async function runSearch(): Promise<void> {
     const q = query.trim();
-    if (!q || searching) return;
+    if (!q || searching || locating) return;
     searching = true;
     status = t('locsearch_searching');
     try {
@@ -135,7 +135,7 @@
 
   // Auto-search as the user types (debounced). Min length keeps requests
   // reasonable for the geocoder.
-  let suppressSearch = $state(false);
+  let suppressSearch = false;
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
     const q = query.trim();

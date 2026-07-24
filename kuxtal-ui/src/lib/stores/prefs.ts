@@ -8,6 +8,10 @@ export type AccessibilityPrefs = {
   dyslexiaFont: boolean;
   screenReaderHints: boolean;
   showTutorialOnStart: boolean;
+  /** Show a permaculture/sustainability fact while a chunk loads (Use Edges). */
+  loadingFacts: boolean;
+  /** Also show the estimated data/energy a load costs (Expose the Seams, opt-in). */
+  loadingEnergyHint: boolean;
 };
 
 export const DEFAULT_PREFS: AccessibilityPrefs = {
@@ -16,7 +20,9 @@ export const DEFAULT_PREFS: AccessibilityPrefs = {
   reducedMotion: false,
   dyslexiaFont: false,
   screenReaderHints: false,
-  showTutorialOnStart: true
+  showTutorialOnStart: true,
+  loadingFacts: true,
+  loadingEnergyHint: false
 };
 
 const SETTINGS_KEY = 'a11y.prefs';

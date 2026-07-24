@@ -21,6 +21,7 @@ export const ES = {
   wiz_save: 'Guardar cambios',
 
   // ---- Wizard: spoken step guidance (screen reader) ----
+  wiz_help_intro: 'Te damos la bienvenida a Kuxtal. Lee de qué trata la aplicación y activa Continuar.',
   wiz_help_name: 'Escribe un nombre para tu tierra en el campo de texto. Cuando termines, activa el botón Continuar.',
   wiz_help_place: 'Indica dónde está tu tierra. Puedes escribir el lugar o usar tu ubicación GPS. Es opcional: puedes activar Continuar sin llenarlo.',
   wiz_help_size: 'Escribe el área aproximada de tu tierra y elige la unidad. Luego activa Continuar.',
@@ -28,7 +29,8 @@ export const ES = {
   wiz_help_goals: 'Marca lo que te interesa cosechar. Es opcional: puedes activar Continuar sin elegir nada.',
   wiz_help_challenges: 'Marca los desafíos que enfrenta tu tierra y, si quieres, escribe una nota. Todo es opcional.',
   wiz_help_reminder: 'Elige con qué frecuencia quieres recordatorios y cuál es tu presupuesto. Luego activa Continuar.',
-  wiz_help_preview: 'Esta es una propuesta de bosque comestible para tu tierra. Revísala y elige si quieres crear el contorno, las zonas y las plantas. Activa Continuar para sembrar tu plan.',
+  wiz_help_preview: 'Esta es una propuesta de bosque comestible para tu tierra. Revísala y activa Continuar.',
+  wiz_help_realize: 'Decide si quieres que Kuxtal dibuje tu contorno, tus zonas y siembre las plantas sugeridas en el mapa, luego activa Continuar para sembrar tu plan.',
   wiz_help_ready: 'Todo está listo. Activa Entrar al lienzo para empezar a usar la app.',
   wiz_toast_required: 'Completa los campos obligatorios para continuar.',
   wiz_toast_planted: 'Sembré tu plan: {parts}.',
@@ -50,6 +52,8 @@ export const ES = {
   locsearch_results_label: 'Resultados de la búsqueda',
 
   // ---- Steps: titles & subtitles ----
+  step_intro_title: 'Un códice viviente',
+  step_intro_sub: 'Conocimiento para sanar la tierra.',
   step_name_title: '¿Cómo se llama tu tierra?',
   step_name_sub: 'Un nombre, una historia.',
   step_place_title: '¿Dónde está?',
@@ -66,8 +70,13 @@ export const ES = {
   step_reminder_sub: '¿Con qué frecuencia quieres recordatorios?',
   step_preview_title: 'Bosque comestible sugerido',
   step_preview_sub: 'Una propuesta basada en permacultura.',
+  step_realize_title: 'Materializar tu plan',
+  step_realize_sub: 'Prepara tu lienzo.',
   step_ready_title: 'Listo para sembrar',
   step_ready_sub: 'Tu lienzo está abierto.',
+
+  // ---- Intro step ----
+  intro_text: 'Kuxtal es un códice viviente y fuera de línea que te ayuda a registrar, cuidar y comprender tu tierra mediante prácticas de permacultura. A continuación, te haremos unas breves preguntas para autogenerar un plan de especies inicial adaptado a tu clima y geografía.',
 
   // ---- Name step ----
   name_placeholder: 'Mi tierra',
@@ -265,6 +274,13 @@ export const ES = {
   topbar_status_memory: 'memoria · sin persistencia',
   topbar_status_idb: 'offline · guardado',
   topbar_status_offline: 'offline · sincronizado',
+  topbar_view_lienzo: 'Lienzo',
+  topbar_view_map: 'Mapa',
+  topbar_basemap_picker: 'Estilo',
+  lienzo_warn_title: 'Cambiar a Lienzo',
+  lienzo_warn_body: 'Al cambiar a Lienzo, todos los elementos se moverán al centro de un lienzo vacío. Para volver, tendrás que mover los elementos manualmente o seleccionar una nueva ubicación central.',
+  lienzo_warn_confirm: 'Continuar',
+  lienzo_warn_cancel: 'Cancelar',
 
   // ---- Settings ----
   settings_tab_plan: 'Mi plan',
@@ -1787,6 +1803,15 @@ export const ES = {
   her_untitled: 'Sin título',
   her_no_desc: 'Sin descripción',
   her_saber_title: 'Saber: {title}',
+
+  // ---- Loading facts (Use Edges × Expose the Seams) ----
+  loading_label: 'Cargando…',
+  loading_est: 'aprox.',
+  loading_energy_src: 'Estimación según el modelo Sustainable Web Design (~0,81 kWh/GB). No es una medición exacta.',
+  a11y_loading_facts: 'Datos mientras carga',
+  a11y_loading_facts_desc: 'Muestra un dato de permacultura o sostenibilidad mientras se carga una sección.',
+  a11y_loading_energy: 'Estimación de datos y energía',
+  a11y_loading_energy_desc: 'Al cargar, muestra cuántos datos y energía (estimados) cuesta esa carga.',
 } as const;
 
 export type TranslationKey = keyof typeof ES;

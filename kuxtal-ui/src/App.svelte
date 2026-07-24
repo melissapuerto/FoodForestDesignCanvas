@@ -9,6 +9,7 @@
   import RuleMessageStack from './components/Layout/RuleMessageStack.svelte';
   import Splash from './components/Layout/Splash.svelte';
   import TTSButton from './components/Layout/TTSButton.svelte';
+  import LoadingFacts from './components/Layout/LoadingFacts.svelte';
 
   // Feature modules are code-split (Use Small and Slow Solutions / low-bandwidth
   // users): the shell ships without MapLibre, the plant catalog, or any module.
@@ -410,7 +411,7 @@
             onOpenPlantasCatalog={() => openModule('plantas')}
           />
         {:else}
-          <div class="lazy-fill" aria-hidden="true"></div>
+          <LoadingFacts context="boot" moduleKey="boot" />
         {/if}
       </div>
 
@@ -469,7 +470,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'plantas'}
-        {#await loadPlantGuide() then { default: C }}
+        {#await loadPlantGuide()}
+          <LoadingFacts moduleKey="plantas" />
+        {:then { default: C }}
           <C onPick={onPickFromCatalog} />
         {/await}
       {/if}
@@ -482,7 +485,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'lienzo'}
-        {#await loadCanvasInventory() then { default: C }}
+        {#await loadCanvasInventory()}
+          <LoadingFacts moduleKey="lienzo" />
+        {:then { default: C }}
           <C {landId} onPlace={onPlaceFromInventory} />
         {/await}
       {/if}
@@ -495,7 +500,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'animales'}
-        {#await loadAnimals() then { default: C }}
+        {#await loadAnimals()}
+          <LoadingFacts moduleKey="animales" />
+        {:then { default: C }}
           <C {landId} />
         {/await}
       {/if}
@@ -508,7 +515,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'cuaderno'}
-        {#await loadNotebook() then { default: C }}
+        {#await loadNotebook()}
+          <LoadingFacts moduleKey="cuaderno" />
+        {:then { default: C }}
           <C {landId} />
         {/await}
       {/if}
@@ -522,7 +531,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'calendarios'}
-        {#await loadCalendars() then { default: C }}
+        {#await loadCalendars()}
+          <LoadingFacts moduleKey="calendarios" />
+        {:then { default: C }}
           <C />
         {/await}
       {/if}
@@ -536,7 +547,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'heredado'}
-        {#await loadSaberes() then { default: C }}
+        {#await loadSaberes()}
+          <LoadingFacts moduleKey="heredado" />
+        {:then { default: C }}
           <C {landId} />
         {/await}
       {/if}
@@ -550,7 +563,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'saberes'}
-        {#await loadRulesEditor() then { default: C }}
+        {#await loadRulesEditor()}
+          <LoadingFacts moduleKey="saberes" />
+        {:then { default: C }}
           <C />
         {/await}
       {/if}
@@ -563,7 +578,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'recursos'}
-        {#await loadStock() then { default: C }}
+        {#await loadStock()}
+          <LoadingFacts moduleKey="recursos" />
+        {:then { default: C }}
           <C />
         {/await}
       {/if}
@@ -577,7 +594,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'analisis'}
-        {#await loadDashboard() then { default: C }}
+        {#await loadDashboard()}
+          <LoadingFacts moduleKey="analisis" />
+        {:then { default: C }}
           <C {landId} />
         {/await}
       {/if}
@@ -590,7 +609,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'comunidad'}
-        {#await loadComunidad() then { default: C }}
+        {#await loadComunidad()}
+          <LoadingFacts moduleKey="comunidad" />
+        {:then { default: C }}
           <C />
         {/await}
       {/if}
@@ -603,7 +624,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'protocolo'}
-        {#await loadProtocolo() then { default: C }}
+        {#await loadProtocolo()}
+          <LoadingFacts moduleKey="protocolo" />
+        {:then { default: C }}
           <C {landId} />
         {/await}
       {/if}
@@ -616,7 +639,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'cosecha'}
-        {#await loadCosecha() then { default: C }}
+        {#await loadCosecha()}
+          <LoadingFacts moduleKey="cosecha" />
+        {:then { default: C }}
           <C {landId} />
         {/await}
       {/if}
@@ -629,7 +654,9 @@
       onClose={() => openModule(null)}
     >
       {#if activeModule === 'ajustes'}
-        {#await loadSettings() then { default: C }}
+        {#await loadSettings()}
+          <LoadingFacts moduleKey="ajustes" />
+        {:then { default: C }}
           <C />
         {/await}
       {/if}

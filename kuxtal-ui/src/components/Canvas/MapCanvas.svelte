@@ -36,6 +36,7 @@
     type LngLat
   } from '../../lib/map/geometry';
   import { GeoSpatialIndex, type SpatialItem } from '../../lib/map/spatialIndex';
+  import { styleFor, zoneTone, zoneLineTone, type Basemap } from '../../lib/map/basemaps';
   import { findRulesAt } from '../../lib/rules/engine';
   import type { RuleHit } from '../../lib/rules/types';
   import { showToast } from '../../lib/stores/toast';
@@ -53,6 +54,7 @@
   import MeasurementOverlay from './MeasurementOverlay.svelte';
   import RelationshipPanel from './RelationshipPanel.svelte';
   import LocationPicker from './LocationPicker.svelte';
+  import CanvasTooltips from './CanvasTooltips.svelte';
   import { localRuleMessage, localSpeciesName } from '../../lib/i18n/dataLocal';
   import { addRecentPlant } from '../../lib/stores/recents';
   import { allNormalizedPlants, type NormalizedPlant } from '../../lib/pfaf/pfafSchema';
@@ -286,23 +288,6 @@
     }
     return { zoneNumber, intent };
   }
-  function zoneTone(zn: number | null): string {
-    // codex zone palette — Z1 deep ocre to Z5 jade
-    if (zn === 1) return '#D6A87A';
-    if (zn === 2) return '#C7894C';
-    if (zn === 3) return '#9CA47B';
-    if (zn === 4) return '#7C9F88';
-    if (zn === 5) return '#5B8F76';
-    return '#C7B58A';
-  }
-  function zoneLineTone(zn: number | null): string {
-    if (zn === 1) return '#A85D2A';
-    if (zn === 2) return '#8C5421';
-    if (zn === 3) return '#5C6E3A';
-    if (zn === 4) return '#3F6F4F';
-    if (zn === 5) return '#2D5A48';
-    return '#6B5340';
-  }
 
   function rebuildSpatial(): void {
     const items: SpatialItem[] = [];
@@ -321,88 +306,8 @@
     spatial.rebuild(items);
   }
 
-  // ---------- Map styles (codex-toned) ----------
-  const PAPER_STYLE: any = {
-    version: 8,
-    sources: {
-      paper: {
-        type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        attribution: '© OpenStreetMap'
-      }
-    },
-    layers: [
-      {
-        id: 'paper-bg',
-        type: 'background',
-        paint: { 'background-color': '#F1ECDD' }
-      },
-      {
-        id: 'paper-osm',
-        type: 'raster',
-        source: 'paper',
-        paint: {
-          'raster-saturation': -0.55,
-          'raster-contrast': -0.05,
-          'raster-brightness-min': 0.18,
-          'raster-brightness-max': 0.95,
-          'raster-opacity': 0.7
-        }
-      }
-    ],
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf'
-  };
-
-  const STREETS_STYLE: any = {
-    version: 8,
-    sources: {
-      osm: {
-        type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        attribution: '© OpenStreetMap'
-      }
-    },
-    layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf'
-  };
-
-  const SATELLITE_STYLE: any = {
-    version: 8,
-    sources: {
-      esri: {
-        type: 'raster',
-        tiles: [
-          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-        ],
-        tileSize: 256,
-        attribution: 'Tiles © Esri'
-      }
-    },
-    layers: [{ id: 'esri', type: 'raster', source: 'esri' }],
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf'
-  };
-
-  const BLANK_STYLE: any = {
-    version: 8,
-    sources: {},
-    layers: [
-      {
-        id: 'blank-bg',
-        type: 'background',
-        paint: { 'background-color': '#FAF8F2' }
-      }
-    ],
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf'
-  };
-
-  function styleFor(b: typeof basemap): any {
-    if (b === 'blank') return BLANK_STYLE;
-    if (b === 'satellite') return SATELLITE_STYLE;
-    if (b === 'streets') return STREETS_STYLE;
-    return PAPER_STYLE;
-  }
+  // ---------- Map styles ----------
+  // Basemap style specs + zone palette are in lib/map/basemaps.ts (pure, tested).
 
   // ---------- Editing Feature ----------
   function refreshEditSource(): void {
@@ -1927,6 +1832,43 @@
       { enableHighAccuracy: true, timeout: 8000 }
     );
   }
+  // Hover + ghost tooltip models (rendered by CanvasTooltips — pointer/hover only,
+  // so touch/mobile never builds these). Priority: plant > water > zone.
+  const plantTip = $derived.by(() => {
+    if (!hoverPlantId || editingId) return null;
+    const pRow = plantedRows.find((p) => p.id === hoverPlantId);
+    const sp = pRow ? speciesById(pRow.species_id) : null;
+    if (!sp || !pRow) return null;
+    return {
+      x: hoverPos.x, y: hoverPos.y,
+      glyphSvg: renderGlyphSvg((sp.glyph as GlyphName | null) || plantGlyph(sp.id)),
+      tone: toneCss(sp.id),
+      name: localSpeciesName(sp.common_name, sp.scientific_name),
+      latin: sp.scientific_name,
+      plantType: sp.plant_type,
+      spacingM: sp.spacing_m,
+      rules: hoveredPlantRules
+    };
+  });
+  const waterTip = $derived.by(() => {
+    if (hoverPlantId || !hoverWaterId || editingId) return null;
+    const wRow = waterFeatureRows.find((w) => w.id === hoverWaterId);
+    if (!wRow) return null;
+    return { x: hoverPos.x, y: hoverPos.y, tone: '#2980B9', typeLabel: waterTypeNames[wRow.type] ?? wRow.type, name: wRow.name, notes: wRow.notes };
+  });
+  const zoneTip = $derived.by(() => {
+    if (hoverPlantId || hoverWaterId || !hoverZoneId || editingId) return null;
+    const zRow = zoneRows.find((z) => z.id === hoverZoneId);
+    if (!zRow) return null;
+    const meta = parseZoneMeta(zRow);
+    return { x: hoverPos.x, y: hoverPos.y, tone: zoneTone(meta.zoneNumber), zoneNumber: meta.zoneNumber, name: zRow.name, intent: meta.intent, elevationM: zRow.elevation_m };
+  });
+  const ghostTip = $derived.by(() => {
+    if (!ghostPos || !selectedSpeciesId) return null;
+    const sp = speciesById(selectedSpeciesId);
+    if (!sp) return null;
+    return { x: ghostPos.x, y: ghostPos.y, tone: toneCss(sp.id), blocked: ghostBlocked, blockMessage: ghostBlockMessage, score: ghostScore, rules: ghostRules };
+  });
 </script>
 
 <div class="lienzo" class:transitioning>
@@ -1937,89 +1879,7 @@
 
   <FloatingTools {tool} setTool={setTool} />
 
-  <!-- Tooltips: Only show one at a time (plant > water > zone priority) -->
-  {#if hoverPlantId && !editingId}
-    {@const pRow = plantedRows.find((p) => p.id === hoverPlantId)}
-    {@const sp = pRow ? speciesById(pRow.species_id) : null}
-    {#if sp && pRow}
-      <div class="plant-tip codex-card-soft" style="left: {Math.min(hoverPos.x + 16, (typeof window !== 'undefined' ? window.innerWidth - 300 : 800))}px; top: {Math.max(hoverPos.y - 16, 8)}px; --tone: {toneCss(sp.id)};">
-        <div class="tip-head">
-          <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderGlyphSvg only emits the internal glyph-data.ts path constants, never user input -->
-          <span class="tip-glyph">{@html renderGlyphSvg((sp.glyph as GlyphName | null) || plantGlyph(sp.id))}</span>
-          <div class="tip-text">
-            <span class="tip-name">{localSpeciesName(sp.common_name, sp.scientific_name)}</span>
-            <span class="tip-latin">{sp.scientific_name}</span>
-          </div>
-        </div>
-        <div class="tip-meta">
-          <span class="badge">{sp.plant_type}</span>
-          <span class="badge">{t('map_diam_label')} {sp.spacing_m}m</span>
-        </div>
-        {#if hoveredPlantRules.length > 0}
-          <div class="tip-rules">
-            {#each hoveredPlantRules as r}
-              <div class="tip-rule {r.tone}">
-                <div class="tip-rule-label">{r.tone === 'warn' ? t('map_rule_caution') : t('map_rule_companion_label')}</div>
-                <div class="tip-rule-msg">{r.message}</div>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/if}
-  {:else if hoverWaterId && !editingId}
-    {@const wRow = waterFeatureRows.find(w => w.id === hoverWaterId)}
-    {#if wRow}
-      {@const wtypeLabels = waterTypeNames}
-      <div class="zone-tip codex-card-soft" style="left: {Math.min(hoverPos.x + 12, (typeof window !== 'undefined' ? window.innerWidth - 300 : 800))}px; top: {Math.max(hoverPos.y - 12, 8)}px; --tone: #2980B9;">
-        <div class="zt-head">
-          <span class="zt-tag" style="background: #2980B9;">{wtypeLabels[wRow.type] ?? wRow.type}</span>
-          <span class="zt-name">{wRow.name}</span>
-        </div>
-        {#if wRow.notes}
-          <div class="zt-notes">{wRow.notes}</div>
-        {/if}
-      </div>
-    {/if}
-  {:else if hoverZoneId && !editingId}
-    {@const zRow = zoneRows.find(z => z.id === hoverZoneId)}
-    {#if zRow}
-      {@const meta = parseZoneMeta(zRow)}
-      <div class="zone-tip codex-card-soft" style="left: {Math.min(hoverPos.x + 12, (typeof window !== 'undefined' ? window.innerWidth - 300 : 800))}px; top: {Math.max(hoverPos.y - 12, 8)}px; --tone: {zoneTone(meta.zoneNumber)};">
-        <div class="zt-head">
-          {#if meta.zoneNumber}<span class="zt-tag">Z{meta.zoneNumber}</span>{/if}
-          <span class="zt-name">{zRow.name}</span>
-        </div>
-        {#if meta.intent}<div class="zt-intent">{meta.intent}</div>{/if}
-        {#if zRow.elevation_m}<div class="zt-notes">{t('map_elevation_label')} {zRow.elevation_m.toFixed(1)}m</div>{/if}
-      </div>
-    {/if}
-  {/if}
-
-  <!-- Ghost placement tooltip -->
-  {#if ghostPos && selectedSpeciesId}
-    {@const sp = speciesById(selectedSpeciesId)}
-    {#if sp}
-      <div class="ghost-tip codex-card-soft" style="left: {ghostPos.x + 16}px; top: {ghostPos.y + 16}px; --tone: {ghostBlocked ? 'var(--cinabrio)' : toneCss(sp.id)};">
-        <div class="gt-label">
-          {ghostBlocked ? t('map_blocked') : t('map_possible_spot')}
-          {#if !ghostBlocked && ghostScore !== null}<span class="gt-score">{t('map_suitability_label')} {ghostScore}</span>{/if}
-        </div>
-        {#if ghostBlocked && ghostBlockMessage}
-          <div class="gt-msg">{ghostBlockMessage}</div>
-        {:else if ghostRules.length > 0}
-          <div class="gt-rule">
-            {#each ghostRules as r}
-              <div class="tip-rule {r.tone}">
-                <div class="gt-rule-label">{r.tone === 'warn' ? t('map_rule_caution') : t('map_rule_companion_label')}</div>
-                <div class="gt-msg">{r.message}</div>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/if}
-  {/if}
+  <CanvasTooltips plant={plantTip} water={waterTip} zone={zoneTip} ghost={ghostTip} />
 
   {#if relPanelPlantId}
     <RelationshipPanel
@@ -2193,9 +2053,6 @@
     }
     .cb-head { font-size: calc(12px * var(--text-scale)); }
   }
-  @media (max-width: 420px) {
-    .plant-tip, .zone-tip, .ghost-tip { max-width: 240px; }
-  }
 
   :global(.plant-marker) {
     width: 30px;
@@ -2221,93 +2078,6 @@
     0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
     50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
   }
-
-  .plant-tip {
-    position: absolute;
-    z-index: var(--z-canvas-tip);
-    padding: 12px 14px;
-    max-width: 280px;
-    pointer-events: none;
-    border-left: 3px solid var(--tone, var(--ocre));
-    animation: inkBloom 0.18s var(--ease-codex) both;
-  }
-  .tip-head { display: flex; gap: 10px; align-items: center; }
-  .tip-glyph { color: var(--tone, var(--ocre)); display: inline-flex; }
-  .tip-text { display: flex; flex-direction: column; gap: 2px; }
-  .tip-name { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(18px * var(--text-scale)); line-height: 1.1; color: var(--ink); }
-  .tip-latin { font-family: var(--serif); font-weight: var(--display-weight); font-style: italic; font-size: calc(12px * var(--text-scale)); color: var(--ink-soft); }
-  .tip-meta { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
-  .tip-rules { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
-  .tip-rule .tip-rule-label {
-    font-family: var(--mono);
-    font-size: calc(9px * var(--text-scale));
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--jade-deep);
-  }
-  .tip-rule.warn .tip-rule-label { color: var(--cinabrio); }
-  .tip-rule-msg { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(13px * var(--text-scale)); line-height: 1.4; margin-top: 2px; color: var(--ink); }
-
-  .zone-tip {
-    position: absolute;
-    z-index: var(--z-canvas-tip);
-    padding: 12px 14px;
-    max-width: 280px;
-    pointer-events: none;
-    border-left: 3px solid var(--tone, var(--ocre));
-    animation: inkBloom 0.18s var(--ease-codex) both;
-  }
-  .zt-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .zt-tag {
-    background: var(--tone, var(--ocre));
-    color: var(--paper);
-    font-family: var(--mono);
-    font-size: calc(9px * var(--text-scale));
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    padding: 2px 8px;
-    border-radius: 999px;
-  }
-  .zt-name { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(18px * var(--text-scale)); line-height: 1.1; color: var(--ink); }
-  .zt-intent { font-family: var(--serif); font-weight: var(--display-weight); font-style: italic; font-size: calc(13px * var(--text-scale)); margin-top: 6px; color: var(--ink-soft); }
-  .zt-notes { font-size: calc(12px * var(--text-scale)); margin-top: 6px; color: var(--ink-soft); line-height: 1.4; }
-
-  .ghost-tip {
-    position: absolute;
-    z-index: var(--z-canvas-tip);
-    padding: 10px 12px;
-    max-width: 260px;
-    pointer-events: none;
-    border-left: 3px solid var(--tone, var(--jade-deep));
-    animation: inkBloom 0.16s var(--ease-codex) both;
-  }
-  .gt-label {
-    font-family: var(--mono);
-    font-size: calc(9px * var(--text-scale));
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--tone, var(--jade-deep));
-  }
-  .gt-score {
-    margin-left: 6px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    background: var(--paper-warm);
-    border: 1px solid var(--line);
-    color: var(--jade-deep);
-    font-weight: 700;
-  }
-  .gt-msg { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(13px * var(--text-scale)); margin-top: 4px; color: var(--ink); }
-  .gt-rule { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
-  .gt-rule .gt-rule-label {
-    font-family: var(--mono);
-    font-size: calc(9px * var(--text-scale));
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--jade-deep);
-  }
-  .gt-rule.warn .gt-rule-label { color: var(--cinabrio); }
-  .gt-rule-msg { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(13px * var(--text-scale)); line-height: 1.4; margin-top: 2px; color: var(--ink); }
 
   .picker-reopen {
     position: absolute;

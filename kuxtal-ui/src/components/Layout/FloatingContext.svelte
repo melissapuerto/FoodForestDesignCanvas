@@ -1,29 +1,34 @@
 <script lang="ts">
-  import { localSpeciesName } from '../../lib/i18n/dataLocal';
-  import Glyph from '../../lib/glyphs/Glyph.svelte';
-  import { plantGlyph, plantTone } from '../../lib/glyphs/mapping';
-  import { speciesById, type PlantedRow } from '../../lib/stores/appState';
-  import { t } from '../../lib/i18n/index.svelte';
-  import { railCollapsed, toggleRail } from '../../lib/stores/chrome';
+  import { localSpeciesName } from '../../lib/i18n/dataLocal'
+  import Glyph from '../../lib/glyphs/Glyph.svelte'
+  import { plantGlyph, plantTone } from '../../lib/glyphs/mapping'
+  import { speciesById, type PlantedRow } from '../../lib/stores/appState'
+  import { t } from '../../lib/i18n/index.svelte'
+  import { railCollapsed, toggleRail } from '../../lib/stores/chrome'
 
   let {
     plantedRows,
     zonesCount,
     onOpenAnimales
   }: {
-    plantedRows: PlantedRow[];
-    zonesCount: number;
-    onOpenAnimales: () => void;
-  } = $props();
+    plantedRows: PlantedRow[]
+    zonesCount: number
+    onOpenAnimales: () => void
+  } = $props()
 
   const speciesUsed = $derived.by(() => {
-    const m = new Map<string, number>();
-    for (const p of plantedRows) m.set(p.species_id, (m.get(p.species_id) || 0) + 1);
-    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
-  });
+    const m = new Map<string, number>()
+    for (const p of plantedRows)
+      m.set(p.species_id, (m.get(p.species_id) || 0) + 1)
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
+  })
 </script>
 
-<aside class="ctx-rail" class:collapsed={$railCollapsed} aria-label={t('ctx_title')}>
+<aside
+  class="ctx-rail"
+  class:collapsed={$railCollapsed}
+  aria-label={t('ctx_title')}
+>
   <button
     type="button"
     class="rail-handle"
@@ -35,51 +40,81 @@
   >
     <span aria-hidden="true">{$railCollapsed ? '◂' : '▸'}</span>
   </button>
-  <div id="ctx-rail-inner" class="ctx-rail-inner" inert={$railCollapsed}>
-  <div class="codex-card ctx-card">
-    <div class="label">{t('ctx_canvas')}</div>
-    <div class="ctx-grid">
-      <div class="ctx-mini">
-        <div class="n">{plantedRows.length}</div>
-        <div class="l">{t('ctx_plants')}</div>
-      </div>
-      <div class="ctx-mini">
-        <div class="n">{zonesCount}</div>
-        <div class="l">{t('ctx_zones')}</div>
+  <div
+    id="ctx-rail-inner"
+    class="ctx-rail-inner"
+    inert={$railCollapsed}
+  >
+    <div class="codex-card ctx-card">
+      <div class="label">{t('ctx_canvas')}</div>
+      <div class="ctx-grid">
+        <div class="ctx-mini">
+          <div class="n">{plantedRows.length}</div>
+          <div class="l">{t('ctx_plants')}</div>
+        </div>
+        <div class="ctx-mini">
+          <div class="n">{zonesCount}</div>
+          <div class="l">{t('ctx_zones')}</div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <div class="codex-card ctx-card">
-    <div class="ctx-head">
-      <span class="label">{t('ctx_animals')}</span>
-      <button type="button" class="lk" onclick={onOpenAnimales}>{t('ctx_animals_see')}</button>
-    </div>
-    <div class="sub" style="font-style: italic; font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(13px * var(--text-scale));">
-      {t('ctx_animals_hint')}
-    </div>
-  </div>
-
-  {#if speciesUsed.length > 0}
-    <div class="codex-card ctx-card ctx-inv">
-      <div class="label">{t('ctx_inventory')}</div>
-      <div class="inv-grid">
-        {#each speciesUsed as [sp, n]}
-          {@const def = speciesById(sp)}
-          {#if def}
-            <div class="inv-chip" title={def.scientific_name ?? ''}>
-              <span class="inv-ico" style="color: {plantTone(sp)};">
-                <Glyph name={plantGlyph(sp)} size={14} />
-              </span>
-              <span class="inv-name">{localSpeciesName(def.common_name, def.scientific_name)}</span>
-              <span class="coord inv-n" aria-hidden="true">×{n}</span>
-              <span class="sr-only">, {t('count_total', { n: String(n) })}</span>
-            </div>
-          {/if}
-        {/each}
+    <div class="codex-card ctx-card">
+      <div class="ctx-head">
+        <span class="label">{t('ctx_animals')}</span>
+        <button
+          type="button"
+          class="lk"
+          onclick={onOpenAnimales}>{t('ctx_animals_see')}</button
+        >
+      </div>
+      <div
+        class="sub"
+        style="font-style: italic; font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(13px * var(--text-scale));"
+      >
+        {t('ctx_animals_hint')}
       </div>
     </div>
-  {/if}
+
+    {#if speciesUsed.length > 0}
+      <div class="codex-card ctx-card ctx-inv">
+        <div class="label">{t('ctx_inventory')}</div>
+        <div class="inv-grid">
+          {#each speciesUsed as [sp, n]}
+            {@const def = speciesById(sp)}
+            {#if def}
+              <div
+                class="inv-chip"
+                title={def.scientific_name ?? ''}
+              >
+                <span
+                  class="inv-ico"
+                  style="color: {plantTone(sp)};"
+                >
+                  <Glyph
+                    name={plantGlyph(sp)}
+                    size={14}
+                  />
+                </span>
+                <span class="inv-name"
+                  >{localSpeciesName(
+                    def.common_name,
+                    def.scientific_name
+                  )}</span
+                >
+                <span
+                  class="coord inv-n"
+                  aria-hidden="true">×{n}</span
+                >
+                <span class="sr-only"
+                  >, {t('count_total', { n: String(n) })}</span
+                >
+              </div>
+            {/if}
+          {/each}
+        </div>
+      </div>
+    {/if}
   </div>
 </aside>
 
@@ -102,7 +137,9 @@
     flex-direction: column;
     gap: 10px;
     pointer-events: auto;
-    transition: transform 0.42s var(--ease-codex), opacity 0.3s var(--ease-codex);
+    transition:
+      transform 0.42s var(--ease-codex),
+      opacity 0.3s var(--ease-codex);
   }
   .ctx-rail.collapsed .ctx-rail-inner {
     transform: translateX(calc(100% + 30px));
@@ -131,26 +168,82 @@
     font-size: calc(13px * var(--text-scale));
     cursor: pointer;
     box-shadow: -2px 0 8px oklch(0.2 0.04 60 / 0.12);
-    transition: right 0.42s var(--ease-codex), transform 0.42s var(--ease-codex);
+    transition:
+      right 0.42s var(--ease-codex),
+      transform 0.42s var(--ease-codex);
   }
-  .rail-handle:hover { background: var(--paper-warm); }
+  .rail-handle:hover {
+    background: var(--paper-warm);
+  }
   .ctx-rail.collapsed .rail-handle {
     left: auto;
     right: 0;
     transform: translateX(calc(14px + var(--safe-right)));
     border-right: 1.5px solid var(--ink);
   }
-  .ctx-card { padding: 10px 12px; }
-  .ctx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
-  .ctx-mini { background: var(--paper-warm); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; }
-  .ctx-mini .n { font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(22px * var(--text-scale)); line-height: 1; }
-  .ctx-mini .l { font-family: var(--mono); font-size: calc(9px * var(--text-scale)); letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); margin-top: 2px; }
-  .ctx-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-  .lk { background: none; border: none; color: var(--ocre-deep); font-family: var(--mono); font-size: calc(10px * var(--text-scale)); letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; padding: 2px 4px; }
-  .lk:hover { color: var(--ocre); text-decoration: underline; }
+  .ctx-card {
+    padding: 10px 12px;
+  }
+  .ctx-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .ctx-mini {
+    background: var(--paper-warm);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+  .ctx-mini .n {
+    font-family: var(--serif);
+    font-weight: var(--display-weight);
+    font-size: calc(22px * var(--text-scale));
+    line-height: 1;
+  }
+  .ctx-mini .l {
+    font-family: var(--mono);
+    font-size: calc(9px * var(--text-scale));
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  .ctx-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .lk {
+    background: none;
+    border: none;
+    color: var(--ocre-deep);
+    font-family: var(--mono);
+    font-size: calc(10px * var(--text-scale));
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .lk:hover {
+    color: var(--ocre);
+    text-decoration: underline;
+  }
 
-  .ctx-inv { flex: 1; min-height: 0; overflow: auto; }
-  .inv-grid { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .ctx-inv {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    max-height: 75%;
+  }
+  .inv-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+  }
   .inv-chip {
     display: inline-flex;
     align-items: center;
@@ -161,10 +254,16 @@
     border-radius: 999px;
     font-size: calc(11px * var(--text-scale));
   }
-  .inv-name { font-weight: 500; }
-  .inv-n { font-size: calc(9px * var(--text-scale)); }
+  .inv-name {
+    font-weight: 500;
+  }
+  .inv-n {
+    font-size: calc(9px * var(--text-scale));
+  }
 
   @media (max-width: 900px) {
-    .ctx-rail { display: none; }
+    .ctx-rail {
+      display: none;
+    }
   }
 </style>

@@ -16,3 +16,6 @@ scripts/.smoke.mjs
 .env.*
 !.env.example
 !.env.production.example
+
+# Graphify
+graphify-out/

@@ -1,100 +1,123 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { authUser } from '../../lib/api';
-  import { apiFetch } from '../../lib/api';
-  import { t } from '../../lib/i18n/index.svelte';
+  import { onMount } from 'svelte'
+  import { authUser } from '../../lib/api'
+  import { apiFetch } from '../../lib/api'
+  import { t } from '../../lib/i18n/index.svelte'
 
-  let unreadCount = $state(0);
-  let notifications = $state<any[]>([]);
-  let showDropdown = $state(false);
-  let wrapEl: HTMLElement | null = $state(null);
-  let bellEl: HTMLButtonElement | null = $state(null);
+  let unreadCount = $state(0)
+  let notifications = $state<any[]>([])
+  let showDropdown = $state(false)
+  let wrapEl: HTMLElement | null = $state(null)
+  let bellEl: HTMLButtonElement | null = $state(null)
 
   onMount(async () => {
     if ($authUser) {
-      await loadNotifications();
+      await loadNotifications()
     }
-  });
+  })
 
   // Dismiss the dropdown on Escape (returning focus to the bell) or an
   // outside click — standard expectations for a popup.
   onMount(() => {
     const onDocClick = (e: MouseEvent) => {
       if (showDropdown && wrapEl && !wrapEl.contains(e.target as Node)) {
-        showDropdown = false;
+        showDropdown = false
       }
-    };
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && showDropdown) {
-        e.preventDefault();
-        showDropdown = false;
-        bellEl?.focus();
+        e.preventDefault()
+        showDropdown = false
+        bellEl?.focus()
       }
-    };
-    document.addEventListener('click', onDocClick);
-    document.addEventListener('keydown', onKey);
+    }
+    document.addEventListener('click', onDocClick)
+    document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('click', onDocClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  });
+      document.removeEventListener('click', onDocClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  })
 
   async function loadNotifications(): Promise<void> {
     try {
-      const data = await apiFetch('/notifications/');
-      notifications = data?.items ?? [];
-      unreadCount = data?.unread_count ?? 0;
+      const data = await apiFetch('/notifications/')
+      notifications = data?.items ?? []
+      unreadCount = data?.unread_count ?? 0
     } catch (e) {
-      console.warn('Failed to load notifications', e);
+      console.warn('Failed to load notifications', e)
     }
   }
 
   async function markAsRead(id: number): Promise<void> {
     try {
-      await apiFetch(`/notifications/${id}/read`, { method: 'POST' });
-      notifications = notifications.map(n => n.id === id ? { ...n, read: true } : n);
-      unreadCount = Math.max(0, unreadCount - 1);
+      await apiFetch(`/notifications/${id}/read`, { method: 'POST' })
+      notifications = notifications.map((n) =>
+        n.id === id ? { ...n, read: true } : n
+      )
+      unreadCount = Math.max(0, unreadCount - 1)
     } catch (e) {
-      console.warn('Failed to mark as read', e);
+      console.warn('Failed to mark as read', e)
     }
   }
 
   async function markAllAsRead(): Promise<void> {
     try {
-      await apiFetch('/notifications/read_all', { method: 'POST' });
-      notifications = notifications.map(n => ({ ...n, read: true }));
-      unreadCount = 0;
+      await apiFetch('/notifications/read_all', { method: 'POST' })
+      notifications = notifications.map((n) => ({ ...n, read: true }))
+      unreadCount = 0
     } catch (e) {
-      console.warn('Failed to mark all as read', e);
+      console.warn('Failed to mark all as read', e)
     }
   }
 </script>
 
-<div class="nb-wrap" bind:this={wrapEl}>
+<div
+  class="nb-wrap"
+  bind:this={wrapEl}
+>
   <button
     bind:this={bellEl}
     type="button"
-    class="bell-btn"
-    onclick={() => showDropdown = !showDropdown}
-    aria-label={unreadCount > 0 ? `${t('notif_aria')}: ${unreadCount}` : t('notif_aria')}
+    class="bell-btn codex-card"
+    onclick={() => (showDropdown = !showDropdown)}
+    aria-label={unreadCount > 0
+      ? `${t('notif_aria')}: ${unreadCount}`
+      : t('notif_aria')}
     aria-haspopup="true"
     aria-expanded={showDropdown}
   >
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      aria-hidden="true"
+    >
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
     </svg>
     {#if unreadCount > 0}
-      <span class="badge" aria-hidden="true">{unreadCount}</span>
+      <span
+        class="badge"
+        aria-hidden="true">{unreadCount}</span
+      >
     {/if}
   </button>
 
   {#if showDropdown}
-    <div class="dropdown" aria-label={t('notif_title')}>
+    <div
+      class="dropdown"
+      aria-label={t('notif_title')}
+    >
       <div class="header">
         <h4>{t('notif_title')}</h4>
         {#if unreadCount > 0}
-          <button type="button" onclick={markAllAsRead} class="mark-all">{t('notif_mark_read')}</button>
+          <button
+            type="button"
+            onclick={markAllAsRead}
+            class="mark-all">{t('notif_mark_read')}</button
+          >
         {/if}
       </div>
       <div class="list">
@@ -106,7 +129,9 @@
           >
             <span class="title">{n.title}</span>
             <span class="body">{n.body}</span>
-            <span class="date">{new Date(n.created_at).toLocaleDateString()}</span>
+            <span class="date"
+              >{new Date(n.created_at).toLocaleDateString()}</span
+            >
           </button>
         {/each}
         {#if notifications.length === 0}
@@ -118,26 +143,49 @@
 </div>
 
 <style>
-  /* Codex theme tokens (this component previously referenced undefined vars
-     like --text/--bg/--accent, leaving the dropdown transparent/unreadable). */
-  .nb-wrap { position: relative; display: inline-flex; }
+  /* Replace custom background and shadow with pure codex-card inherited styles
+     while keeping dimensions consistent with other icon-btn elements. */
+  .nb-wrap {
+    position: relative;
+    display: inline-flex;
+  }
   .bell-btn {
     position: relative;
-    background: none;
-    border: none;
     cursor: pointer;
     padding: 8px;
-    border-radius: 4px;
     color: var(--ink);
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 40px;
+    min-height: 40px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    transition: background 0.15s var(--ease-codex);
   }
-  .bell-btn svg { width: 22px; height: 22px; }
+  @media (pointer: coarse) {
+    .bell-btn {
+      min-height: 44px;
+      min-width: 44px;
+    }
+  }
+  .bell-btn svg {
+    width: 18px;
+    height: 18px;
+  }
   .bell-btn:hover {
     background: var(--paper-warm);
+  }
+  @media (max-width: 420px) and (pointer: coarse) {
+    .bell-btn {
+      min-height: 30px;
+      min-width: 36px;
+      padding: 6px;
+      svg {
+        width: 16px;
+        height: 16px;
+      }
+    }
   }
   .badge {
     position: absolute;
@@ -176,7 +224,8 @@
   .header h4 {
     margin: 0;
     font-size: calc(16px * var(--text-scale));
-    font-family: var(--serif); font-weight: var(--display-weight);
+    font-family: var(--serif);
+    font-weight: var(--display-weight);
     color: var(--ink);
   }
   .mark-all {
@@ -187,7 +236,9 @@
     font-size: calc(13px * var(--text-scale));
     min-height: 32px;
   }
-  .mark-all:hover { text-decoration: underline; }
+  .mark-all:hover {
+    text-decoration: underline;
+  }
   .list {
     max-height: min(300px, 56dvh);
     overflow-y: auto;
@@ -205,7 +256,8 @@
     color: var(--ink);
     cursor: pointer;
   }
-  .item:hover, .item:focus-visible {
+  .item:hover,
+  .item:focus-visible {
     background: var(--paper-warm);
   }
   .item.unread {

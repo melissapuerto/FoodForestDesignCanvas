@@ -144,7 +144,7 @@
     {/each}
   </div>
   <div class="quick-action">
-    <button type="button" class="btn btn-accent" onclick={onPlaceAtCenter} disabled={!selectedId}>
+    <button type="button" class="btn btn-accent hide-on-mobile" onclick={onPlaceAtCenter} disabled={!selectedId}>
       <Glyph name="Plus" size={14} />
       {t('picker_plant_center')}
     </button>
@@ -210,6 +210,7 @@
   }
   .qchip-ico { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
   @media (max-width: 760px) {
+    .hide-on-mobile { display: none !important; }
     .quick { bottom: calc(var(--nav-h) + var(--safe-bottom) + 84px); padding: 8px 10px; gap: 6px; }
     .qchip { min-width: 64px; padding: 6px; }
     .qchip-name { font-size: calc(10px * var(--text-scale)); }

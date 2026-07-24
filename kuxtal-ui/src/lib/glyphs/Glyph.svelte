@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { GLYPHS, type GlyphName } from './glyph-data';
+  import { GLYPHS, type GlyphName } from './glyph-data'
 
   let {
     name,
@@ -7,17 +7,19 @@
     title,
     decorative = true,
     stroke = 1.4,
-    strokeLinejoin = 'round'
+    strokeLinejoin = 'round',
+    style = ''
   }: {
-    name: GlyphName;
-    size?: number | string;
-    title?: string;
-    decorative?: boolean;
-    stroke?: number;
-    strokeLinejoin?: 'round' | 'miter' | 'bevel';
-  } = $props();
+    name: GlyphName
+    size?: number | string
+    title?: string
+    decorative?: boolean
+    stroke?: number
+    strokeLinejoin?: 'round' | 'miter' | 'bevel'
+    style?: string
+  } = $props()
 
-  const def = $derived(GLYPHS[name]);
+  const def = $derived(GLYPHS[name])
 </script>
 
 <svg
@@ -33,6 +35,7 @@
   role={decorative ? 'presentation' : 'img'}
   aria-hidden={decorative}
   aria-label={!decorative ? title : undefined}
+  {style}
 >
   {#if title && !decorative}
     <title>{title}</title>
@@ -42,12 +45,29 @@
     <path {d} />
   {/each}
   {#each def?.circles ?? [] as c}
-    <circle cx={c.cx} cy={c.cy} r={c.r} fill={c.fill ? 'currentColor' : 'none'} />
+    <circle
+      cx={c.cx}
+      cy={c.cy}
+      r={c.r}
+      fill={c.fill ? 'currentColor' : 'none'}
+    />
   {/each}
   {#each def?.ellipses ?? [] as e}
-    <ellipse cx={e.cx} cy={e.cy} rx={e.rx} ry={e.ry} transform={e.transform} />
+    <ellipse
+      cx={e.cx}
+      cy={e.cy}
+      rx={e.rx}
+      ry={e.ry}
+      transform={e.transform}
+    />
   {/each}
   {#each def?.rects ?? [] as r}
-    <rect x={r.x} y={r.y} width={r.w} height={r.h} rx={r.rx ?? 0} />
+    <rect
+      x={r.x}
+      y={r.y}
+      width={r.w}
+      height={r.h}
+      rx={r.rx ?? 0}
+    />
   {/each}
 </svg>

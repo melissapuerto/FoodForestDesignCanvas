@@ -3,6 +3,7 @@
   import type { GlyphName } from '../../lib/glyphs/glyph-data'
   import { t as tr } from '../../lib/i18n/index.svelte'
   import { undo, redo, canUndo, canRedo } from '../../lib/stores/history'
+  import { navCollapsed } from '../../lib/stores/chrome'
 
   // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y = redo. Ignored while typing.
   function onKeyDown(e: KeyboardEvent): void {
@@ -46,6 +47,7 @@
 
 <aside
   class="tools-rail codex-card"
+  class:is-collapsed={$navCollapsed}
   aria-label={tr('tools_aria')}
   data-tour="tools"
 >
@@ -64,10 +66,10 @@
       <span class="tool-hint coord" aria-hidden="true">{tool_item.hint}</span>
     </button>
   {/each}
-  <div class="tool-sep" aria-hidden="true"></div>
+  <div class="tool-sep hide-on-mobile" aria-hidden="true"></div>
   <button
     type="button"
-    class="tool-btn"
+    class="tool-btn hide-on-mobile"
     disabled={!$canUndo}
     aria-label={tr('tool_undo')}
     title={`${tr('tool_undo')} · Ctrl+Z`}
@@ -78,7 +80,7 @@
   </button>
   <button
     type="button"
-    class="tool-btn"
+    class="tool-btn hide-on-mobile"
     disabled={!$canRedo}
     aria-label={tr('tool_redo')}
     title={`${tr('tool_redo')} · Ctrl+Y`}
@@ -152,20 +154,33 @@
       max-width: calc(100vw - 16px - var(--safe-left) - var(--safe-right));
       overflow-x: auto;
       overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x proximity;
+      scrollbar-width: none;
+      transition: all 0.3s var(--ease-codex);
     }
+    /* When the module bar collapses into a FAB on the left, shift this right */
+    .tools-rail.is-collapsed {
+      left: calc(60px + var(--safe-left));
+      transform: none;
+      max-width: calc(100vw - 68px - var(--safe-left) - var(--safe-right));
+    }
+    .tools-rail::-webkit-scrollbar { display: none; }
+    .hide-on-mobile {
+      display: none !important;
+    }
+    /* Icon-only on phones: the label lives in aria-label, so hiding it visually
+       keeps every tool reachable while fitting more of them without scrolling. */
     .tool-btn {
-      width: 56px;
-      padding: 6px;
-      font-size: calc(9px * var(--text-scale));
+      width: 46px;
+      padding: 6px 4px;
       min-height: 44px;
       justify-content: center;
+      flex-shrink: 0;
+      scroll-snap-align: center;
     }
-    .tool-ico {
-      width: 18px;
-      height: 18px;
-    }
-    .tool-hint {
-      display: none;
-    }
+    .tool-lbl { display: none; }
+    .tool-ico { width: 20px; height: 20px; }
+    .tool-hint { display: none; }
   }
 </style>

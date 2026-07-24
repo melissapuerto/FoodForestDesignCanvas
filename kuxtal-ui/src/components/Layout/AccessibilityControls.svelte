@@ -15,7 +15,9 @@
     { key: 'highContrast', lk: 'a11y_high_contrast', dk: 'a11y_high_contrast_desc' },
     { key: 'reducedMotion', lk: 'a11y_reduced_motion', dk: 'a11y_reduced_motion_desc' },
     { key: 'dyslexiaFont', lk: 'a11y_dyslexia_font', dk: 'a11y_dyslexia_font_desc' },
-    { key: 'showTutorialOnStart', lk: 'a11y_tutorial', dk: 'a11y_tutorial_desc' }
+    { key: 'showTutorialOnStart', lk: 'a11y_tutorial', dk: 'a11y_tutorial_desc' },
+    { key: 'loadingFacts', lk: 'a11y_loading_facts', dk: 'a11y_loading_facts_desc' },
+    { key: 'loadingEnergyHint', lk: 'a11y_loading_energy', dk: 'a11y_loading_energy_desc' }
   ];
 </script>
 

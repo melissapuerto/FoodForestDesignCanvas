@@ -14,6 +14,7 @@
   import { reloadFromDb } from '../../lib/stores/appState';
   import LocationPicker from './LocationPicker.svelte';
   import LocationSearch from './LocationSearch.svelte';
+  import LanguageToggle from './LanguageToggle.svelte';
   import { reverseGeocode } from '../../lib/map/geocode';
   import SelectWithOther from './SelectWithOther.svelte';
   import { formatMeters } from '../../lib/utils/format';
@@ -51,18 +52,20 @@
     mode?: 'first-run' | 'edit';
   } = $props();
 
-  type StepId = 'name' | 'place' | 'size' | 'char' | 'goals' | 'challenges' | 'reminder' | 'preview' | 'ready';
+  type StepId = 'intro' | 'name' | 'place' | 'size' | 'char' | 'goals' | 'challenges' | 'reminder' | 'preview' | 'realize' | 'ready';
 
   const steps: Array<{ id: StepId; title: string; sub: string }> = $derived([
-    { id: 'name', title: t('wiz_st_name_title'), sub: t('wiz_st_name_sub') },
-    { id: 'place', title: t('wiz_st_place_title'), sub: t('wiz_st_place_sub') },
-    { id: 'size', title: t('wiz_st_size_title'), sub: t('wiz_st_size_sub') },
-    { id: 'char', title: t('wiz_st_char_title'), sub: t('wiz_st_char_sub') },
-    { id: 'goals', title: t('wiz_st_goals_title'), sub: t('wiz_st_goals_sub') },
-    { id: 'challenges', title: t('wiz_st_challenges_title'), sub: t('wiz_st_challenges_sub') },
-    { id: 'reminder', title: t('wiz_st_reminder_title'), sub: t('wiz_st_reminder_sub') },
-    { id: 'preview', title: t('wiz_st_preview_title'), sub: t('wiz_st_preview_sub') },
-    { id: 'ready', title: t('wiz_st_ready_title'), sub: t('wiz_st_ready_sub') }
+    { id: 'intro', title: t('step_intro_title' as any), sub: t('step_intro_sub' as any) },
+    { id: 'name', title: t('step_name_title' as any), sub: t('step_name_sub' as any) },
+    { id: 'place', title: t('step_place_title' as any), sub: t('step_place_sub' as any) },
+    { id: 'size', title: t('step_size_title' as any), sub: t('step_size_sub' as any) },
+    { id: 'char', title: t('step_char_title' as any), sub: t('step_char_sub' as any) },
+    { id: 'goals', title: t('step_goals_title' as any), sub: t('step_goals_sub' as any) },
+    { id: 'challenges', title: t('step_challenges_title' as any), sub: t('step_challenges_sub' as any) },
+    { id: 'reminder', title: t('step_reminder_title' as any), sub: t('step_reminder_sub' as any) },
+    { id: 'preview', title: t('step_preview_title' as any), sub: t('step_preview_sub' as any) },
+    { id: 'realize', title: t('step_realize_title' as any), sub: t('step_realize_sub' as any) },
+    { id: 'ready', title: t('step_ready_title' as any), sub: t('step_ready_sub' as any) }
   ]);
 
   let step = $state(0);
@@ -272,10 +275,6 @@
       finishWizard();
       return;
     }
-    if (cur === 'preview') {
-      finishWizard();
-      return;
-    }
     step += 1;
   }
 
@@ -391,14 +390,23 @@
     <div class="wiz-grid">
       <div class="wiz-text">
         <div class="label" style="margin-bottom: 12px;">{t('wiz_progress_natural', { n: String(step + 1), total: String(steps.length) })}</div>
-        <h1 id="wiz-title" bind:this={titleEl} tabindex="-1" class="handline" style="display: inline-block; margin-bottom: 14px; font-size: calc(clamp(30px, 5vw, 48px) * var(--text-scale)); outline: none;">
+        <h1 id="wiz-title" bind:this={titleEl} tabindex="-1" class="handline" style="display: inline-block; margin-bottom: 14px; font-size: calc(clamp(30px, 5vw, 48px) * var(--text-scale)); outline: none; max-width: 100%; white-space: normal; word-wrap: break-word;">
           {stepT(steps[step].id, 'title')}
         </h1>
         <p style="font-family: var(--serif); font-weight: var(--display-weight); font-size: calc(17px * var(--text-scale)); font-style: italic; color: var(--ink-soft); margin-bottom: 20px;">
           {stepT(steps[step].id, 'sub')}
         </p>
 
-        {#if steps[step].id === 'name'}
+        {#if steps[step].id === 'intro'}
+          <p style="font-family: var(--serif); font-size: calc(18px * var(--text-scale)); line-height: 1.6; color: var(--ink);">
+            {t('intro_text' as any)}
+          </p>
+          <div style="margin-top: 24px; padding: 16px; background: var(--paper-warm); border-radius: 8px; border: 1px solid var(--line);">
+            <div style="font-size: calc(14px * var(--text-scale)); font-weight: 500; margin-bottom: 12px; color: var(--ink-soft);">{t('settings_lang_title')}</div>
+            <LanguageToggle />
+          </div>
+
+        {:else if steps[step].id === 'name'}
           <input
             class="wiz-name-input"
             bind:value={parcelName}
@@ -408,8 +416,8 @@
           <div class="coord" style="margin-top: 12px;">{t('name_hint')}</div>
 
         {:else if steps[step].id === 'place'}
-          <!-- Accessible place search: type, pick a real result, coordinates set. -->
-          <LocationSearch onSelect={(r) => { location = r.label; lat = r.lat.toFixed(6); lng = r.lng.toFixed(6); }} />
+          <!-- Place selection: type or use map. -->
+          <LocationSearch onSelect={(r: any) => { location = r.label; lat = r.lat.toFixed(6); lng = r.lng.toFixed(6); }} />
           <div class="field-row" style="margin: 12px 0;">
             <label for="loc">{t('place_label')}</label>
             <input id="loc" class="inp" bind:value={location} placeholder={t('place_placeholder')} />
@@ -687,8 +695,12 @@
                 <div class="banner warn" style="margin-top: 6px;">{w}</div>
               {/each}
             {/if}
+          {:else}
+            <div class="empty">{t('preview_empty')}</div>
+          {/if}
 
-            <div class="weave" style="margin: 18px 0;" aria-hidden="true"></div>
+        {:else if steps[step].id === 'realize'}
+          {#if plan}
             <div class="label">{t('preview_plant_q')}</div>
             <p class="sub" style="margin-top: 6px;">{t('preview_plant_desc')}</p>
             {#if !lat || !lng}
@@ -913,7 +925,7 @@
   <footer class="wiz-foot">
     <button type="button" class="btn btn-ghost" onclick={back} disabled={step === 0}>{t('wiz_back')}</button>
     <button type="button" class="btn btn-primary" onclick={next} disabled={!canAdvance()}>
-      {#if step === steps.length - 1 || steps[step].id === 'preview'}
+      {#if steps[step].id === 'ready' || steps[step].id === 'realize'}
         {seed.isEdit ? t('wiz_save') : t('wiz_enter')}
       {:else}
         {t('wiz_continue')}
@@ -938,9 +950,10 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
     gap: 12px;
   }
-  .wiz-progress { display: flex; gap: 6px; flex: 1; justify-content: center; }
+  .wiz-progress { display: flex; gap: 6px; justify-content: center; }
   .wiz-progress .dot { width: 12px; height: 4px; border-radius: 2px; background: var(--line); transition: all 0.4s var(--ease-codex); }
   .wiz-progress .dot.on { width: 32px; background: var(--ocre); }
   .wiz-progress .dot.past { background: var(--ocre-deep); }
@@ -957,9 +970,10 @@
   .wiz-text { display: flex; flex-direction: column; max-width: 520px; }
   .wiz-name-input {
     width: 100%;
-    padding: 14px 0;
-    background: transparent;
+    padding: 14px 16px;
+    background: var(--paper-warm);
     border: none;
+    border-radius: 6px 6px 0 0;
     border-bottom: 2px solid var(--ocre);
     font-family: var(--serif); font-weight: var(--display-weight);
     font-size: calc(26px * var(--text-scale));

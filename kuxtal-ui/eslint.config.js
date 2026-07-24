@@ -35,9 +35,14 @@ export default ts.config(
     }
   },
   {
-    // Grandfathered oversize components (tracked in docs/reviews/): the size
-    // cap stays warn-level here, but new files must not join this list.
-    files: ['src/components/Canvas/MapCanvas.svelte', 'src/components/Plants/PlantGuide.svelte'],
+    // Grandfathered oversize component: MapCanvas.svelte is the MapLibre
+    // integration core. Its pure logic (geometry, spatial index, recommend
+    // engine, basemap styles + zone palette) is extracted to lib/; the
+    // remainder is map-instance-coupled and is split incrementally with
+    // browser-verified changes. PlantGuide.svelte was split on 2026-07-23 into
+    // NewPlantForm + PlantDetail (+ lib/plants/guide.ts) and is no longer here.
+    // New files must not join this list.
+    files: ['src/components/Canvas/MapCanvas.svelte'],
     rules: { 'max-lines': 'off' }
   },
   {

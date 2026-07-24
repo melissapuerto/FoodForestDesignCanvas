@@ -24,7 +24,7 @@ export type GlyphName =
   | 'Mic' | 'Camera' | 'Plus' | 'Close' | 'ArrowRight' | 'Cube' | 'Map'
   | 'Warning' | 'Sparkle' | 'Settings' | 'Book' | 'Box' | 'Moon' | 'Chart'
   | 'People' | 'Help' | 'Trash' | 'Pin' | 'Check' | 'Reset' | 'Wave'
-  | 'List' | 'Basket';
+  | 'List' | 'Basket' | 'Gear' | 'ChevronDown';
 
 export const GLYPHS: Record<GlyphName, GlyphPaths> = {
   // ---- Plants ----
@@ -402,5 +402,14 @@ export const GLYPHS: Record<GlyphName, GlyphPaths> = {
       'M6 12 L 10 26 H 22 L 26 12 Z',
       'M6 12 L 16 4 L 26 12'
     ]
+  },
+  Gear: {
+    paths: [
+      'M16 3 L18 7 L22 5.5 L21 10 L25 11 L22 14 L25 17 L21 18 L22 22 L18 21 L16 25 L14 21 L10 22 L11 18 L7 17 L10 14 L7 11 L11 10 L10 5.5 L14 7 Z'
+    ],
+    circles: [{ cx: 16, cy: 14, r: 4 }]
+  },
+  ChevronDown: {
+    paths: ['M8 12 L16 20 L24 12']
   }
 };

@@ -23,6 +23,7 @@ export const EN: Record<TranslationKey, string> = {
   wiz_save: 'Save changes',
 
   // ---- Wizard: spoken step guidance (screen reader) ----
+  wiz_help_intro: 'Welcome to Kuxtal. Read what the app is about and activate Continue.',
   wiz_help_name: 'Type a name for your land in the text field. When you are done, activate the Continue button.',
   wiz_help_place: 'Tell us where your land is. You can type the place or use your GPS location. It is optional: you can activate Continue without filling it in.',
   wiz_help_size: 'Type the approximate area of your land and choose the unit. Then activate Continue.',
@@ -30,7 +31,8 @@ export const EN: Record<TranslationKey, string> = {
   wiz_help_goals: 'Mark what you are interested in harvesting. It is optional: you can activate Continue without choosing anything.',
   wiz_help_challenges: 'Mark the challenges your land faces and, if you like, write a note. Everything is optional.',
   wiz_help_reminder: 'Choose how often you want reminders and what your budget is. Then activate Continue.',
-  wiz_help_preview: 'This is a suggested food forest for your land. Review it and choose whether to create the boundary, the zones and the plants. Activate Continue to plant your plan.',
+  wiz_help_preview: 'This is a suggested food forest for your land. Review it and activate Continue.',
+  wiz_help_realize: 'Decide if you want Kuxtal to draw your boundary, zones, and plant the suggested species on the map, then activate Continue to plant your plan.',
   wiz_help_ready: 'Everything is ready. Activate Open canvas to start using the app.',
   wiz_toast_required: 'Complete the required fields to continue.',
   wiz_toast_planted: 'I planted your plan: {parts}.',
@@ -52,6 +54,8 @@ export const EN: Record<TranslationKey, string> = {
   locsearch_results_label: 'Search results',
 
   // ---- Steps: titles & subtitles ----
+  step_intro_title: 'A living codex',
+  step_intro_sub: 'Knowledge to heal the land.',
   step_name_title: 'What is your land called?',
   step_name_sub: 'A name, a story.',
   step_place_title: 'Where is it?',
@@ -68,8 +72,13 @@ export const EN: Record<TranslationKey, string> = {
   step_reminder_sub: 'How often do you want reminders?',
   step_preview_title: 'Suggested food forest',
   step_preview_sub: 'A permaculture-based proposal.',
+  step_realize_title: 'Materialize your plan',
+  step_realize_sub: 'Prepare your canvas.',
   step_ready_title: 'Ready to plant',
   step_ready_sub: 'Your canvas is open.',
+
+  // ---- Intro step ----
+  intro_text: 'Kuxtal is a living, offline-first codex that helps you record, tend, and understand your land using permaculture practices. Next, we will ask a few brief questions to auto-generate an initial plant plan adapted to your climate and geography.',
 
   // ---- Name step ----
   name_placeholder: 'My land',
@@ -267,6 +276,13 @@ export const EN: Record<TranslationKey, string> = {
   topbar_status_memory: 'memory · no persistence',
   topbar_status_idb: 'offline · saved',
   topbar_status_offline: 'offline · synced',
+  topbar_view_lienzo: 'Canvas',
+  topbar_view_map: 'Map',
+  topbar_basemap_picker: 'Style',
+  lienzo_warn_title: 'Switch to Canvas',
+  lienzo_warn_body: 'Switching to Canvas will move all items to the center of an empty canvas. To return, you\u2019ll need to move items back manually or select a new center location.',
+  lienzo_warn_confirm: 'Continue',
+  lienzo_warn_cancel: 'Cancel',
 
   // ---- Settings ----
   settings_tab_plan: 'My plan',
@@ -1789,4 +1805,13 @@ export const EN: Record<TranslationKey, string> = {
   her_untitled: 'Untitled',
   her_no_desc: 'No description',
   her_saber_title: 'Knowledge: {title}',
+
+  // ---- Loading facts (Use Edges × Expose the Seams) ----
+  loading_label: 'Loading…',
+  loading_est: 'est.',
+  loading_energy_src: 'Estimate from the Sustainable Web Design model (~0.81 kWh/GB). Not a precise measurement.',
+  a11y_loading_facts: 'Facts while loading',
+  a11y_loading_facts_desc: 'Show a permaculture or sustainability fact while a section loads.',
+  a11y_loading_energy: 'Data & energy estimate',
+  a11y_loading_energy_desc: 'While loading, show how much data and (estimated) energy that load costs.',
 };

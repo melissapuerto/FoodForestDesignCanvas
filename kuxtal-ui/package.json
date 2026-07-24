@@ -16,7 +16,10 @@
     "test:e2e": "playwright test",
     "smoke:engine": "esbuild scripts/engine-smoke.ts --bundle --platform=node --format=esm --outfile=scripts/.smoke.mjs && node scripts/.smoke.mjs",
     "budget": "node scripts/budget.mjs",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "energy": "python3 scripts/energy/measure_energy.py",
+    "lighthouse": "npx -y @lhci/cli@0.14.x autorun",
+    "ethics-gate": "node scripts/ethics-gate.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
