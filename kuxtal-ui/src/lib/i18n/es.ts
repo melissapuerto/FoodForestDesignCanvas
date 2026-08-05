@@ -1208,6 +1208,9 @@ export const ES = {
   settings_about_source_btn: 'Ver el código fuente',
   settings_ack_practitioners: 'Personas que compartieron su conocimiento',
   settings_ack_practitioners_todo: 'Los nombres de las personas practicantes que dieron su consentimiento se agregarán aquí antes de la evaluación.',
+  settings_ack_practitioners_intro: 'Kuxtal existe porque estas personas contaron cómo trabajan su tierra. Aparecen aquí con su consentimiento, y con una forma concreta de devolverles algo.',
+  settings_ack_testers: 'Quienes probaron y auditaron la app',
+  settings_ack_testers_intro: 'La accesibilidad de esta app la encontraron ellas y ellos, no yo. Los fallos que señalaron cambiaron el diseño.',
   settings_ack_sources: 'Fuentes de datos',
   settings_ack_src_pfaf: 'base de datos abierta de plantas útiles',
   settings_ack_src_regional: 'Registro regional de especies mesoamericanas y andinas, recopilado con cooperativas locales.',
@@ -1221,7 +1224,7 @@ export const ES = {
   settings_dataflow_resources: 'Recursos',
   settings_dataflow_statement: 'Todo esto se guarda en tu dispositivo. No se envía nada a ningún servidor a menos que inicies sesión y toques Sincronizar.',
   settings_dataflow_statement_memory: 'Estás en modo memoria: los datos viven solo en esta pestaña y se borran al cerrarla. No se envía nada a ningún servidor.',
-  settings_dataflow_external: 'Único servicio externo: los mapas base (OpenStreetMap / OpenFreeMap). El resto funciona sin conexión.',
+  settings_dataflow_external: 'Tres cosas salen a internet, y nada más. Los mapas base (OpenStreetMap / OpenFreeMap), guardados 30 días. Al buscar un lugar se envía lo que escribes, y al poner un punto en el mapa se envían esas coordenadas, al servicio de direcciones de OpenStreetMap. Al buscar una especie se envían las palabras que escribes a la base de datos GBIF. Todo lo que guardas se queda en tu dispositivo, y todo sigue funcionando sin conexión.',
 
   // ---- Data portability (export / import) ----
   settings_data_portability_title: 'Tus datos te pertenecen',

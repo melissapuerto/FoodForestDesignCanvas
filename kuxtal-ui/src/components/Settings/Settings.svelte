@@ -13,6 +13,7 @@
   import { autoLogPlants, planted, zones, persistence, lands, activeLandId, createLand, renameLand, deleteLand, setActiveLand } from '../../lib/stores/appState';
   import type { AreaUnit, ClimateProfile, Goal, SunExposure, WaterAccess } from '../../lib/permaculture/types';
   import { getLocale, setLocale, t, LOCALE_NAMES } from '../../lib/i18n/index.svelte';
+  import { PRACTITIONERS, TESTERS, pick } from '../../lib/ack/participants';
   import { localLandName } from '../../lib/i18n/dataLocal';
   import { announce } from '../../lib/stores/announce';
   import { downloadCsvExport, downloadExport, importAllData, isValidExport } from '../../lib/db/exportData';
@@ -130,11 +131,8 @@
     maplibre: 'https://maplibre.org/',
     sqlite: 'https://sqlite.org/wasm/'
   };
-  // Practitioners who consented to be acknowledged by name. Fill in before the
-  // evaluation (ICK-07: attribution requires explicit consent).
-  const PRACTITIONERS: string[] = [
-    // 'Name (community/region)',
-  ];
+  // Everyone who shared knowledge, and how to give something back to them.
+  // Consent handling lives with the data (lib/ack/participants.ts, ICK-07/R10).
 
   async function clearAllData(): Promise<void> {
     const ok = await dialogConfirm({
@@ -355,13 +353,36 @@
     </p>
 
     <div class="label" style="margin-top: 14px;">{t('settings_ack_practitioners')}</div>
-    {#if PRACTITIONERS.length}
-      <ul class="ack-list">
-        {#each PRACTITIONERS as p}<li>{p}</li>{/each}
-      </ul>
-    {:else}
-      <p class="sub" style="margin-top: 6px; font-style: italic;">{t('settings_ack_practitioners_todo')}</p>
-    {/if}
+    <p class="sub" style="margin-top: 6px;">{t('settings_ack_practitioners_intro')}</p>
+    <ul class="ack-list ack-people">
+      {#each PRACTITIONERS as p}
+        <li>
+          <span class="ack-name">{pick(p.name, getLocale())}</span>{#if p.project}<span class="ack-project"> · {pick(p.project, getLocale())}</span>{/if}
+          <span class="ack-country"> ({pick(p.country, getLocale())})</span>
+          {#if p.support}
+            <div class="ack-support">
+              {#if p.link}
+                <a href={p.link} target="_blank" rel="noopener noreferrer">{pick(p.support, getLocale())}</a>
+              {:else}
+                {pick(p.support, getLocale())}
+              {/if}
+            </div>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+
+    <div class="label" style="margin-top: 14px;">{t('settings_ack_testers')}</div>
+    <p class="sub" style="margin-top: 6px;">{t('settings_ack_testers_intro')}</p>
+    <ul class="ack-list ack-people">
+      {#each TESTERS as p}
+        <li>
+          <span class="ack-name">{pick(p.name, getLocale())}</span>{#if p.project}<span class="ack-project"> · {pick(p.project, getLocale())}</span>{/if}
+          <span class="ack-country"> ({pick(p.country, getLocale())})</span>
+          {#if p.support}<div class="ack-support">{pick(p.support, getLocale())}</div>{/if}
+        </li>
+      {/each}
+    </ul>
 
     <div class="label" style="margin-top: 14px;">{t('settings_ack_sources')}</div>
     <ul class="ack-list">
@@ -660,6 +681,11 @@
 
   .ack-list { margin: 8px 0 0; padding-left: 20px; }
   .ack-list li { font-size: calc(13px * var(--text-scale)); color: var(--ink-soft); line-height: 1.6; margin: 3px 0; }
+  .ack-people li { margin: 8px 0; }
+  .ack-name { color: var(--ink); font-weight: 600; }
+  .ack-project { color: var(--ink-soft); }
+  .ack-country { color: var(--ink-soft); opacity: 0.85; }
+  .ack-support { font-size: calc(12.5px * var(--text-scale)); color: var(--ink-soft); font-style: italic; margin-top: 1px; }
   /* Underline so links are distinguishable by more than colour (WCAG 1.4.1). */
   .ack-list a { color: var(--ocre-deep); text-decoration: underline; }
 

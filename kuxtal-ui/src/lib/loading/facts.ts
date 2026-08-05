@@ -1,12 +1,12 @@
 /**
- * Loading-time facts — the "Use Edges and Value the Marginals" × "Expose the
+ * Loading-time facts, the "Use Edges and Value the Marginals" × "Expose the
  * Seams" bridge (PermaSE). A wait is otherwise wasted time; here it teaches a
  * permaculture or sustainability fact and, opt-in, exposes the data/energy the
  * app is about to spend. Every fact carries a source (R10: knowledge is
  * attributed). Bilingual so it works in both shipped locales.
  *
- * This is deliberately calm and non-gamified (ETHICAL_CONSTRAINTS R9: no
- * engagement mechanics) and is only shown when the user leaves it on
+ * This is deliberately calm and non-gamified, with no streaks, no counters and
+ * no engagement mechanics of any kind, and is only shown when the user leaves it on
  * (prefs.loadingFacts). The energy line is off by default (prefs.loadingEnergyHint)
  * so the seam is offered, never forced (Expose-the-Seams: do not force the seams).
  */
@@ -16,27 +16,27 @@ export type Fact = { es: string; en: string; source: string };
 export const FACTS: readonly Fact[] = [
   {
     es: 'Después de tu primera visita, Kuxtal funciona sin conexión: las siguientes cargas transfieren casi 0 bytes.',
-    en: 'After your first visit, Kuxtal works offline — later loads transfer almost 0 bytes.',
-    source: 'Kuxtal ENERGY.md'
+    en: 'After your first visit, Kuxtal works offline. Later loads transfer almost 0 bytes.',
+    source: 'Kuxtal energy measurement'
   },
   {
     es: 'Tus datos viven en tu dispositivo, no en un servidor. Nada se envía sin tu permiso.',
     en: 'Your data lives on your device, not on a server. Nothing is sent without your consent.',
-    source: 'Kuxtal ETHICAL_CONSTRAINTS R2'
+    source: 'Kuxtal data handling'
   },
   {
-    es: 'Los bordes —donde se encuentran dos ecosistemas— son las zonas más productivas de un terreno.',
-    en: 'Edges — where two ecosystems meet — are the most productive zones of a landscape.',
+    es: 'Los bordes, donde se encuentran dos ecosistemas, son las zonas más productivas de un terreno.',
+    en: 'Edges, where two ecosystems meet, are the most productive zones of a landscape.',
     source: 'Permaculture: Use Edges and Value the Marginal'
   },
   {
     es: '«El problema es la solución»: observa antes de actuar.',
-    en: '"The problem is the solution" — observe before you act.',
+    en: '"The problem is the solution." Observe before you act.',
     source: 'Bill Mollison, Permaculture'
   },
   {
-    es: 'Las Tres Hermanas —maíz, frijol y calabaza— crecen mejor juntas que separadas.',
-    en: 'The Three Sisters — maize, beans and squash — grow better together than apart.',
+    es: 'Las Tres Hermanas (maíz, frijol y calabaza) crecen mejor juntas que separadas.',
+    en: 'The Three Sisters (maize, beans and squash) grow better together than apart.',
     source: 'Mesoamerican milpa tradition'
   },
   {
@@ -57,7 +57,7 @@ export const FACTS: readonly Fact[] = [
   {
     es: 'El modo oscuro y el movimiento reducido bajan el consumo de pantallas OLED.',
     en: 'Dark mode and reduced motion lower the energy use of OLED screens.',
-    source: 'Kuxtal ENERGY.md'
+    source: 'Kuxtal energy measurement'
   },
   {
     es: 'Soluciones pequeñas y lentas: empezar mínimo y crecer despacio suele ser más resiliente.',
@@ -69,11 +69,11 @@ export const FACTS: readonly Fact[] = [
 /**
  * Estimated gzipped transfer for a chunk, in bytes. These are order-of-magnitude
  * figures from the real build (npm run budget), used only to show the user what a
- * one-time load costs — labelled as an estimate in the UI. 'boot' is the
+ * one-time load costs, labelled as an estimate in the UI. 'boot' is the
  * first-paint + map-engine path; the rest are lazy module chunks.
  */
 export const CHUNK_BYTES: Record<string, number> = {
-  boot: 288_000, // MapLibre GL engine (~288 KB gz) — the heaviest one-time load
+  boot: 288_000, // MapLibre GL engine (~288 KB gz), the heaviest one-time load
   analisis: 85_000, // Dashboard + Chart.js
   plantas: 60_000, // Plant guide + species catalog
   lienzo: 16_000,
@@ -91,8 +91,8 @@ export const CHUNK_BYTES: Record<string, number> = {
 
 /**
  * Energy per gigabyte transferred, in kWh. Deliberately a single documented
- * estimate, consistent with the ENERGY.md honesty rule ("transparent, documented
- * estimates — NOT precision figures"). Source: Sustainable Web Design model (~0.81
+ * estimate, consistent with the energy reporting rule ("transparent, documented
+ * estimates, NOT precision figures"). Source: Sustainable Web Design model (~0.81
  * kWh/GB end-to-end). Halve it as networks decarbonise if you re-baseline.
  */
 export const ENERGY_KWH_PER_GB = 0.81;

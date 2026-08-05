@@ -76,7 +76,6 @@
   --z-bar: 12;           /* top bar, bottom module bar             */
   --z-canvas-tip: 14;    /* canvas banners + hover tooltips        */
   --z-popover: 20;       /* module-bar popover menus               */
-  --z-toast: 60;         /* transient toasts                       */
   --z-drawer-backdrop: 70;
   --z-drawer: 80;        /* slide-in / bottom-sheet drawers        */
   --z-modal-backdrop: 90;
@@ -85,6 +84,10 @@
   --z-splash: 200;       /* splash takeover                        */
   --z-menu: 240;         /* dropdown menus (notifications)         */
   --z-dialog: 250;       /* confirm / prompt dialogs               */
+  /* Toasts sit above every surface that can raise one. At 60 they rendered
+     underneath drawers (80) and panels (100), so a message triggered from
+     inside a panel, such as "sign in to share", was hidden behind that panel. */
+  --z-toast: 300;        /* transient toasts, above panels+dialogs */
   --z-skip: 400;         /* skip-to-content link                   */
   /* Guided tour (driver.js) uses its own 10000 overlay — above everything. */
 }

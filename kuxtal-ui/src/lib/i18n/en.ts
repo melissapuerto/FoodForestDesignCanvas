@@ -1209,6 +1209,9 @@ export const EN: Record<TranslationKey, string> = {
   settings_about_license: 'License: free software,',
   settings_about_source_btn: 'View the source code',
   settings_ack_practitioners: 'People who shared their knowledge',
+  settings_ack_practitioners_intro: 'Kuxtal exists because these people described how they work their land. They appear here with their consent, each with a concrete way to give something back.',
+  settings_ack_testers: 'Who tested and audited the app',
+  settings_ack_testers_intro: 'The accessibility of this app was found by them, not by me. What they pointed out changed the design.',
   settings_ack_practitioners_todo: 'The names of the practitioners who gave their consent will be added here before the evaluation.',
   settings_ack_sources: 'Data sources',
   settings_ack_src_pfaf: 'open database of useful plants',
@@ -1223,7 +1226,7 @@ export const EN: Record<TranslationKey, string> = {
   settings_dataflow_resources: 'Resources',
   settings_dataflow_statement: 'All of this is stored on your device. Nothing is sent to any server unless you sign in and tap Sync.',
   settings_dataflow_statement_memory: 'You are in memory mode: data lives only in this tab and is cleared when you close it. Nothing is sent to any server.',
-  settings_dataflow_external: 'The only external service is the base map (OpenStreetMap / OpenFreeMap). Everything else works offline.',
+  settings_dataflow_external: 'Three things reach the internet, and only these. Base map tiles (OpenStreetMap / OpenFreeMap), cached for 30 days. Searching for a place sends what you type, and dropping a pin sends those coordinates, to OpenStreetMap’s address service. Searching for a species sends the words you type to the GBIF species database. Everything you save stays on the device, and all of it keeps working offline.',
 
   // ---- Data portability (export / import) ----
   settings_data_portability_title: 'Your data belongs to you',

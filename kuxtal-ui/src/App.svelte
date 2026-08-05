@@ -51,6 +51,7 @@
   import { suggestionsOpen, isMobile } from './lib/stores/layout';
   import { tourCompleted } from './lib/tour/tourFlag';
   import { announce, liveMessage } from './lib/stores/announce';
+  import { get } from 'svelte/store';
   import { prefs } from './lib/stores/prefs';
 
   import { initDb, exec, selectAll } from './lib/db/sqlite';
@@ -70,9 +71,10 @@
   } from './lib/i18n/index.svelte';
   import { localLandName } from './lib/i18n/landName';
 
-  type Phase = 'splash' | 'wizard' | 'app';
+  type Phase = 'splash' | 'handoff' | 'wizard' | 'app';
 
   let phase = $state<Phase>('splash');
+  let handoffTarget = $state<Phase>('wizard');
   let initError = $state<string | null>(null);
   let initDone = $state(false);
 
@@ -155,6 +157,33 @@
     } catch { return false; }
   }
 
+  /**
+   * How long the handoff screen stays up before the next phase takes over.
+   *
+   * The seam this project talks about, the cost of loading, was invisible in
+   * practice: the wizard chunk is preloaded while the user reads the splash, so
+   * by the time they press the button there is nothing left to wait for and the
+   * fact never rendered. Holding the handoff for a beat makes the one moment
+   * the app does ask for the user's patience legible instead of instantaneous.
+   * The wait is honest work, not a fake spinner: the database is opening and
+   * the next chunk is settling behind it.
+   */
+  const HANDOFF_MS = 1600;
+
+  function goAfterHandoff(target: Phase): void {
+    // Someone who turned facts off has already declined this seam, so they skip
+    // straight through. The seam is offered, never imposed.
+    if (!get(prefs).loadingFacts) {
+      phase = target;
+      return;
+    }
+    handoffTarget = target;
+    phase = 'handoff';
+    setTimeout(() => {
+      if (phase === 'handoff') phase = handoffTarget;
+    }, HANDOFF_MS);
+  }
+
   function onSplashEnter(): void {
     if (!initDone) {
       showToast({ message: t('app_loading_db'), tone: 'info' });
@@ -164,8 +193,7 @@
       phase = 'app';
       return;
     }
-    if (wizardCompleted()) phase = 'app';
-    else phase = 'wizard';
+    goAfterHandoff(wizardCompleted() ? 'app' : 'wizard');
   }
 
   // Warm the chunk the next phase needs. While the user reads the splash we
@@ -364,6 +392,10 @@
 
 {#if phase === 'splash'}
   <Splash onEnter={onSplashEnter} />
+{:else if phase === 'handoff'}
+  <div class="handoff">
+    <LoadingFacts context="boot" moduleKey="boot" />
+  </div>
 {:else if phase === 'wizard'}
   {#if WizardC}
     <WizardC onDone={onWizardDone} />
@@ -684,6 +716,17 @@
 <style>
   /* Placeholder that keeps layout stable while a code-split chunk loads. */
   .lazy-fill { position: absolute; inset: 0; background: var(--paper); }
+
+  /* Splash to onboarding handoff. Full-bleed so the fact is the only thing on
+     screen, above the wizard layer it is about to hand over to. */
+  .handoff {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-wizard);
+    background: var(--paper);
+    display: grid;
+    place-items: center;
+  }
 
   main {
     position: fixed;

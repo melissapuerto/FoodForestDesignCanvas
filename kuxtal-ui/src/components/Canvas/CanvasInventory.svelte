@@ -5,8 +5,8 @@
    * everything the visual map canvas does for plants and zones, without sight:
    * place a species at a chosen location, and review / remove placed plants and
    * rename / delete zones. The map is a spatial *view*; this panel is the
-   * non-visual equivalent of its core actions (see ACCESSIBILITY_AUDIT.md — the
-   * map drawing surface itself is not screen-reader operable by design).
+   * non-visual equivalent of its core actions; the map drawing surface itself
+   * is not screen-reader operable by design.
    *
    * It mutates through the same appState primitives the map uses, and the map
    * subscribes to those stores, so both stay in sync automatically. Every
